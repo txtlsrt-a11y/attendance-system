@@ -31,7 +31,7 @@ export class ErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen w-screen bg-slate-955 bg-weave-pattern flex items-center justify-center p-4 text-slate-100 antialiased font-sans select-none">
+        <div className="min-h-screen w-screen bg-slate-950 bg-weave-pattern flex items-center justify-center p-4 text-slate-100 antialiased font-sans select-none">
           {/* Glowing backdrops */}
           <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-rose-500/5 rounded-full blur-[100px] pointer-events-none"></div>
           <div className="absolute bottom-1/4 right-1/4 translate-x-1/2 translate-y-1/2 w-80 h-80 bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none"></div>

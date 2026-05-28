@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 CREATE INDEX IF NOT EXISTS idx_profiles_worker_id ON public.profiles(worker_id);
 
 -- 4. Create ATTENDANCE Table
+-- 4. Create ATTENDANCE Table
 CREATE TABLE IF NOT EXISTS public.attendance (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     worker_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -44,6 +45,9 @@ CREATE TABLE IF NOT EXISTS public.attendance (
     punch_time TIMESTAMPTZ DEFAULT NOW(),
     attendance_date DATE DEFAULT CURRENT_DATE,
     status TEXT NOT NULL CONSTRAINT status_check CHECK (status IN ('Present', 'Late', 'Half Day', 'Absent')),
+    overtime_minutes INTEGER DEFAULT 0,
+    overtime_hours NUMERIC DEFAULT 0,
+    overtime_status TEXT DEFAULT 'None',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -135,19 +139,15 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
 -- Administrative worker email/ID updates (Syncs worker login ID to auth email)
 CREATE OR REPLACE FUNCTION public.admin_update_worker_email(worker_uid UUID, new_worker_id TEXT)
 RETURNS VOID AS $$
-DECLARE
-    new_email TEXT;
 BEGIN
     -- Strict authorization check: Caller must be admin!
     IF NOT public.is_admin(auth.uid()) THEN
         RAISE EXCEPTION 'Unauthorized: Only administrators can update worker login IDs';
     END IF;
 
-    new_email := lower(new_worker_id) || '@textile-attendance.com';
-
     UPDATE auth.users
-    SET email = new_email,
-        normalized_email = new_email
+    SET email = lower(new_worker_id) || '@textile-attendance.com',
+        normalized_email = lower(new_worker_id) || '@textile-attendance.com'
     WHERE id = worker_uid;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
@@ -165,7 +165,7 @@ BEGIN
         COALESCE(NEW.raw_user_meta_data->>'full_name', 'Unnamed Worker'),
         COALESCE(NEW.raw_user_meta_data->>'worker_id', NULL),
         COALESCE(NEW.raw_user_meta_data->>'mobile', NULL),
-        COALESCE(NEW.raw_user_meta_data->>'department', 'Production'),
+        COALESCE(NEW.raw_user_meta_data->>'department', 'Helper'), -- Default 'Helper' department
         CASE 
             WHEN NEW.raw_user_meta_data->>'shift_id' IS NOT NULL AND NEW.raw_user_meta_data->>'shift_id' <> '' 
             THEN (NEW.raw_user_meta_data->>'shift_id')::UUID 

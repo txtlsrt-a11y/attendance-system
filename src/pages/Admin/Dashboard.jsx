@@ -30,6 +30,7 @@ export default function AdminDashboard() {
   const [selectedShift, setSelectedShift] = useState('all')
   const [selectedDept, setSelectedDept] = useState('all')
   const [selectedStatus, setSelectedStatus] = useState('all') // 'all', 'active', 'inactive', 'absent'
+  const [otTimeframe, setOtTimeframe] = useState('today') // 'today', 'week', 'month'
 
   // Fetch all state metrics
   const fetchDashboardData = async () => {
@@ -50,11 +51,15 @@ export default function AdminDashboard() {
       const allWorkers = profilesData || []
       setWorkers(allWorkers)
 
-      // 3. Fetch today's attendance logs
+      // 3. Fetch past 31 days of attendance logs for multi-day OT aggregations
+      const thirtyOneDaysAgo = new Date()
+      thirtyOneDaysAgo.setDate(thirtyOneDaysAgo.getDate() - 31)
+      const thirtyOneDaysAgoStr = getLocalDateString(thirtyOneDaysAgo)
+
       const { data: attendanceData } = await supabase
         .from('attendance')
         .select('*, profiles(*), shifts(*)')
-        .eq('attendance_date', todayStr)
+        .gte('attendance_date', thirtyOneDaysAgoStr)
         .order('punch_time', { ascending: false })
 
       setAttendance(attendanceData || [])
@@ -90,9 +95,10 @@ export default function AdminDashboard() {
 
   // Process today's live worker metrics
   const getProcessedWorkers = () => {
+    const todayStr = getLocalDateString()
     return workers.map(worker => {
       // Find today's punches for this worker
-      const logs = attendance.filter(log => log.worker_id === worker.id)
+      const logs = attendance.filter(log => log.worker_id === worker.id && log.attendance_date === todayStr)
       
       // Determine presence & activity statuses
       let isPresent = false
@@ -142,9 +148,14 @@ export default function AdminDashboard() {
 
   // Dynamic filter lists
   const filteredWorkers = processedWorkers.filter(w => {
+    const query = searchQuery.toLowerCase()
     const matchesSearch = 
-      w.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      w.worker_id.toLowerCase().includes(searchQuery.toLowerCase())
+      w.full_name.toLowerCase().includes(query) ||
+      w.worker_id.toLowerCase().includes(query) ||
+      (w.mobile || '').includes(query) ||
+      (w.department || '').toLowerCase().includes(query) ||
+      (w.shifts?.shift_name || '').toLowerCase().includes(query) ||
+      (w.activityStatus || '').toLowerCase().includes(query)
     
     const matchesShift = selectedShift === 'all' || w.shift_id === selectedShift
     const matchesDept = selectedDept === 'all' || w.department === selectedDept
@@ -165,6 +176,48 @@ export default function AdminDashboard() {
   const inactiveCount = totalCount - activeCount // Exited, ended shift, or absent
   const checkedOutCount = processedWorkers.filter(w => w.isPresent && w.activityStatus === 'Inactive').length // Checked out today
   const lateCount = processedWorkers.filter(w => w.isLate).length
+
+  const todayStr = getLocalDateString()
+  const overtimeCount = attendance.filter(log => log.attendance_date === todayStr && log.overtime_minutes > 0).length
+  const totalOvertimeHours = attendance.filter(log => log.attendance_date === todayStr).reduce((sum, log) => sum + parseFloat(log.overtime_hours || 0), 0).toFixed(2)
+
+  // Get dynamic leaderboard statistics based on timeframe selection
+  const getLeaderboardData = () => {
+    const startOfMonth = new Date()
+    startOfMonth.setDate(1)
+    const startOfMonthStr = getLocalDateString(startOfMonth)
+
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+    const sevenDaysAgoStr = getLocalDateString(sevenDaysAgo)
+
+    let filtered = attendance
+
+    if (otTimeframe === 'today') {
+      filtered = attendance.filter(log => log.attendance_date === todayStr)
+    } else if (otTimeframe === 'week') {
+      filtered = attendance.filter(log => log.attendance_date >= sevenDaysAgoStr)
+    } else if (otTimeframe === 'month') {
+      filtered = attendance.filter(log => log.attendance_date >= startOfMonthStr)
+    }
+
+    return filtered
+      .filter(log => log.overtime_minutes > 0)
+      .reduce((acc, log) => {
+        const workerName = log.profiles?.full_name || 'Unknown Worker'
+        const workerId = log.profiles?.worker_id || 'N/A'
+        const exists = acc.find(item => item.id === log.worker_id)
+        if (exists) {
+          exists.minutes += log.overtime_minutes
+          exists.hours += parseFloat(log.overtime_hours || 0)
+        } else {
+          acc.push({ id: log.worker_id, name: workerName, workerId, minutes: log.overtime_minutes, hours: parseFloat(log.overtime_hours || 0) })
+        }
+        return acc
+      }, [])
+      .sort((a, b) => b.hours - a.hours)
+      .slice(0, 5)
+  }
 
   // Shift-wise Calculations helper
   const getShiftMetrics = (shift) => {
@@ -210,7 +263,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Primary Live Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
         
         {/* Total Workers */}
         <div className="bg-slate-900 border border-slate-850 rounded-2xl p-4 flex flex-col justify-between shadow-md relative overflow-hidden">
@@ -253,6 +306,14 @@ export default function AdminDashboard() {
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">Late Check-Ins</span>
           <span className="text-2xl font-black text-amber-450 mt-1 block">{loading ? '...' : lateCount}</span>
           <span className="text-[9px] text-amber-500/80 font-bold block mt-1">Grace limit exceeded</span>
+        </div>
+
+        {/* Overtime Today */}
+        <div className="bg-slate-900 border border-slate-850 rounded-2xl p-4 flex flex-col justify-between shadow-md border-l-2 border-l-teal-500 relative overflow-hidden">
+          <div className="absolute right-2 top-2 h-2 w-2 rounded-full bg-teal-500 animate-ping"></div>
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">Overtime Today</span>
+          <span className="text-2xl font-black text-teal-400 mt-1 block">{loading ? '...' : `${totalOvertimeHours} hrs`}</span>
+          <span className="text-[9px] text-teal-550/80 font-bold block mt-1">{overtimeCount} workers punched OT</span>
         </div>
 
       </div>
@@ -333,6 +394,100 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      {/* Overtime Leaderboard & History */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Overtime Leaderboard */}
+        <div className="bg-slate-900 border border-slate-850 rounded-3xl p-5 shadow-xl space-y-4">
+          <div className="flex justify-between items-center border-b border-slate-850/60 pb-3">
+            <h2 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-1.5">
+              <Timer className="h-4 w-4 text-teal-400" />
+              Overtime Leaderboard
+            </h2>
+            <div className="flex bg-slate-950 p-0.5 rounded-lg border border-slate-850">
+              {['today', 'week', 'month'].map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setOtTimeframe(t)}
+                  className={`text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded transition ${
+                    otTimeframe === t ? 'bg-teal-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-3.5">
+            {loading ? (
+              <div className="text-xs text-slate-500">Loading...</div>
+            ) : getLeaderboardData().length === 0 ? (
+              <div className="text-xs text-slate-500 py-4 text-center">No overtime recorded for this timeframe.</div>
+            ) : getLeaderboardData().map((item, idx) => (
+              <div key={item.id} className="flex items-center justify-between bg-slate-950/40 p-3 rounded-xl border border-slate-850">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-black text-slate-500 font-mono">#{idx+1}</span>
+                  <div>
+                    <span className="text-xs font-bold text-white block">{item.name}</span>
+                    <span className="text-[9px] font-mono text-slate-500 block">{item.workerId}</span>
+                  </div>
+                </div>
+                <span className="text-xs font-black text-teal-400">{item.hours.toFixed(2)} hrs</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Overtime Duty Log History */}
+        <div className="lg:col-span-2 bg-slate-900 border border-slate-850 rounded-3xl p-5 shadow-xl space-y-4">
+          <h2 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-1.5 border-b border-slate-850/60 pb-3">
+            <Clock className="h-4 w-4 text-teal-400" />
+            Today's Overtime Duty Logs
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-slate-850 text-[10px] font-black uppercase text-slate-550 tracking-wider">
+                  <th className="py-2.5 px-3">Worker Details</th>
+                  <th className="py-2.5 px-3">Assigned Shift</th>
+                  <th className="py-2.5 px-3">Punch OUT Time</th>
+                  <th className="py-2.5 px-3">Overtime Hours</th>
+                  <th className="py-2.5 px-3 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-850/40 text-slate-350">
+                {loading ? (
+                  <tr><td colSpan="5" className="py-4 text-center text-slate-550">Loading...</td></tr>
+                ) : attendance.filter(log => log.attendance_date === todayStr && log.overtime_minutes > 0).length === 0 ? (
+                  <tr><td colSpan="5" className="py-8 text-center text-slate-550 font-bold uppercase tracking-wider text-[10px]">No overtime recorded today.</td></tr>
+                ) : attendance.filter(log => log.attendance_date === todayStr && log.overtime_minutes > 0).map(log => (
+                  <tr key={log.id} className="hover:bg-slate-950/20 transition">
+                    <td className="py-2.5 px-3">
+                      <span className="font-extrabold text-white block">{log.profiles?.full_name}</span>
+                      <span className="text-[9px] font-mono text-slate-550 block">{log.profiles?.worker_id} • {log.profiles?.department}</span>
+                    </td>
+                    <td className="py-2.5 px-3 font-semibold text-slate-450">
+                      {log.shifts?.shift_name || 'No Shift'}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-slate-450">
+                      {new Date(log.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td className="py-2.5 px-3 font-bold text-teal-400">
+                      {parseFloat(log.overtime_hours || 0).toFixed(2)} hrs
+                    </td>
+                    <td className="py-2.5 px-3 text-right">
+                      <span className="inline-block text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-450 border border-emerald-500/20">
+                        {log.overtime_status || 'Approved'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       {/* Filter and live monitoring worker panel */}
       <div className="bg-slate-900/80 border border-slate-850 rounded-3xl p-4 sm:p-6 shadow-xl">
         
@@ -379,12 +534,16 @@ export default function AdminDashboard() {
               className="bg-slate-950 border border-slate-800 text-white py-2 px-3 rounded-xl text-xs outline-none focus:border-teal-500 transition cursor-pointer"
             >
               <option value="all">All Departments</option>
-              <option value="Production">Production</option>
-              <option value="Spinning">Spinning</option>
-              <option value="Weaving">Weaving</option>
-              <option value="Dyeing">Dyeing</option>
-              <option value="Inspection">Inspection</option>
-              <option value="Maintenance">Maintenance</option>
+              <option value="Superviser">Superviser</option>
+              <option value="Master">Master</option>
+              <option value="BeamGater">BeamGater</option>
+              <option value="Weaver">Weaver</option>
+              <option value="sweeper(saaf safai)">sweeper(saaf safai)</option>
+              <option value="Helper">Helper</option>
+              <option value="Folder">Folder</option>
+              <option value="Watchman">Watchman</option>
+              <option value="Splitting">Splitting</option>
+              <option value="Worper">Worper</option>
             </select>
 
             {/* Presence filters */}
@@ -418,7 +577,7 @@ export default function AdminDashboard() {
             {filteredWorkers.map(w => (
               <div 
                 key={w.id} 
-                className="bg-slate-955 border border-slate-850 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-800 transition shadow"
+                className="bg-slate-900 border border-slate-850 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-800 transition shadow"
               >
                 <div className="flex gap-3 items-center">
                   {/* Selfie Preview */}

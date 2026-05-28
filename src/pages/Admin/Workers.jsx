@@ -27,7 +27,7 @@ export default function ManageWorkers() {
   const [fullName, setFullName] = useState('')
   const [workerId, setWorkerId] = useState('')
   const [mobile, setMobile] = useState('')
-  const [department, setDepartment] = useState('Production')
+  const [department, setDepartment] = useState('Helper')
   const [shiftId, setShiftId] = useState('')
   const [password, setPassword] = useState('12345678')
   
@@ -57,8 +57,15 @@ export default function ManageWorkers() {
       const { data: profilesData } = await supabase.from('profiles').select('*, shifts(*)').eq('role', 'worker').order('created_at', { ascending: false })
       setWorkers(profilesData || [])
 
-      const todayStr = getLocalDateString()
-      const { data: attendanceData } = await supabase.from('attendance').select('*').eq('attendance_date', todayStr)
+      // Fetch last 31 days of attendance logs for multi-day OT aggregations
+      const thirtyOneDaysAgo = new Date()
+      thirtyOneDaysAgo.setDate(thirtyOneDaysAgo.getDate() - 31)
+      const thirtyOneDaysAgoStr = getLocalDateString(thirtyOneDaysAgo)
+
+      const { data: attendanceData } = await supabase
+        .from('attendance')
+        .select('*')
+        .gte('attendance_date', thirtyOneDaysAgoStr)
       setAttendance(attendanceData || [])
 
       const { data: recentData } = await supabase.from('attendance').select('*').order('punch_time', { ascending: false }).limit(1000)
@@ -84,8 +91,20 @@ export default function ManageWorkers() {
   // Evaluate liveness and last punch logs today
   const getProcessedWorkers = () => {
     const todayStr = getLocalDateString()
+    
+    // Calculate calendar boundaries
+    const startOfMonth = new Date()
+    startOfMonth.setDate(1)
+    const startOfMonthStr = getLocalDateString(startOfMonth)
+
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+    const sevenDaysAgoStr = getLocalDateString(sevenDaysAgo)
+
     return workers.map(worker => {
-      const todayPunches = attendance.filter(log => log.worker_id === worker.id)
+      const workerLogs = attendance.filter(log => log.worker_id === worker.id)
+      const todayPunches = workerLogs.filter(log => log.attendance_date === todayStr)
+      
       let isPresent = false
       let activityStatus = 'Inactive'
       let lastPunchLog = null
@@ -108,7 +127,28 @@ export default function ManageWorkers() {
         activityStatus = 'Absent'
       }
 
-      return { ...worker, isPresent, activityStatus, lastPunch: lastPunchLog }
+      // Sum overtime hours
+      const otToday = workerLogs
+        .filter(log => log.attendance_date === todayStr)
+        .reduce((sum, log) => sum + parseFloat(log.overtime_hours || 0), 0)
+
+      const otWeekly = workerLogs
+        .filter(log => log.attendance_date >= sevenDaysAgoStr)
+        .reduce((sum, log) => sum + parseFloat(log.overtime_hours || 0), 0)
+
+      const otMonthly = workerLogs
+        .filter(log => log.attendance_date >= startOfMonthStr)
+        .reduce((sum, log) => sum + parseFloat(log.overtime_hours || 0), 0)
+
+      return { 
+        ...worker, 
+        isPresent, 
+        activityStatus, 
+        lastPunch: lastPunchLog,
+        otToday,
+        otWeekly,
+        otMonthly
+      }
     })
   }
 
@@ -260,7 +300,7 @@ export default function ManageWorkers() {
     setFullName(worker.full_name)
     setWorkerId(worker.worker_id)
     setMobile(worker.mobile || '')
-    setDepartment(worker.department || 'Production')
+    setDepartment(worker.department || 'Helper')
     setShiftId(worker.shift_id || '')
     setPhotoUrl(worker.photo_url || '')
     setPhotoFile(null)
@@ -276,7 +316,7 @@ export default function ManageWorkers() {
     setFullName('')
     setWorkerId('')
     setMobile('')
-    setDepartment('Production')
+    setDepartment('Helper')
     setPhotoUrl('')
     setPhotoFile(null)
     setPassword('12345678')
@@ -290,9 +330,13 @@ export default function ManageWorkers() {
 
   const processedWorkers = getProcessedWorkers()
   const filteredWorkers = processedWorkers.filter(w => {
-    const matchesSearch = w.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          w.worker_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          w.department.toLowerCase().includes(searchQuery.toLowerCase())
+    const query = searchQuery.toLowerCase()
+    const matchesSearch = w.full_name.toLowerCase().includes(query) ||
+                          w.worker_id.toLowerCase().includes(query) ||
+                          (w.mobile || '').includes(query) ||
+                          (w.department || '').toLowerCase().includes(query) ||
+                          (w.shifts?.shift_name || '').toLowerCase().includes(query) ||
+                          w.activityStatus.toLowerCase().includes(query)
     const matchesShift = selectedShiftFilter === 'all' || w.shift_id === selectedShiftFilter
     let matchesStatus = true
     if (selectedStatusFilter === 'active') matchesStatus = w.activityStatus === 'Active'
@@ -347,7 +391,7 @@ export default function ManageWorkers() {
             placeholder="Search workers by ID, name, department..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-955 border border-slate-800 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 text-white rounded-xl py-2.5 pl-10 pr-4 text-xs outline-none transition"
+            className="w-full bg-slate-950 border border-slate-800 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 text-white rounded-xl py-2.5 pl-10 pr-4 text-xs outline-none transition"
           />
         </div>
 
@@ -356,7 +400,7 @@ export default function ManageWorkers() {
           <select
             value={selectedShiftFilter}
             onChange={(e) => setSelectedShiftFilter(e.target.value)}
-            className="w-full bg-slate-955 border border-slate-800 text-white py-2 px-3 rounded-xl text-xs outline-none focus:border-teal-500 transition cursor-pointer"
+            className="w-full bg-slate-950 border border-slate-800 text-white py-2 px-3 rounded-xl text-xs outline-none focus:border-teal-500 transition cursor-pointer"
           >
             <option value="all">All Shifts</option>
             {shifts.map(s => <option key={s.id} value={s.id}>{s.shift_name}</option>)}
@@ -368,7 +412,7 @@ export default function ManageWorkers() {
           <select
             value={selectedStatusFilter}
             onChange={(e) => setSelectedStatusFilter(e.target.value)}
-            className="w-full bg-slate-955 border border-slate-800 text-white py-2 px-3 rounded-xl text-xs outline-none focus:border-teal-500 transition cursor-pointer"
+            className="w-full bg-slate-950 border border-slate-800 text-white py-2 px-3 rounded-xl text-xs outline-none focus:border-teal-500 transition cursor-pointer"
           >
             <option value="all">All Statuses</option>
             <option value="active">Active (Inside Factory)</option>
@@ -459,6 +503,28 @@ export default function ManageWorkers() {
                   </div>
                 </div>
 
+                {/* Mobile Per-Worker Overtime Quick Summary */}
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-slate-955 p-1.5 rounded-xl border border-slate-850/50">
+                    <span className="text-[7px] font-black uppercase text-slate-500 block tracking-wider">Today OT</span>
+                    <span className={`text-[10px] font-bold ${w.otToday > 0 ? 'text-teal-400' : 'text-slate-500'}`}>
+                      {w.otToday.toFixed(2)}h
+                    </span>
+                  </div>
+                  <div className="bg-slate-955 p-1.5 rounded-xl border border-slate-850/50">
+                    <span className="text-[7px] font-black uppercase text-slate-500 block tracking-wider">Weekly OT</span>
+                    <span className={`text-[10px] font-bold ${w.otWeekly > 0 ? 'text-indigo-400' : 'text-slate-500'}`}>
+                      {w.otWeekly.toFixed(2)}h
+                    </span>
+                  </div>
+                  <div className="bg-slate-955 p-1.5 rounded-xl border border-slate-850/50">
+                    <span className="text-[7px] font-black uppercase text-slate-500 block tracking-wider">Monthly OT</span>
+                    <span className={`text-[10px] font-bold ${w.otMonthly > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
+                      {w.otMonthly.toFixed(2)}h
+                    </span>
+                  </div>
+                </div>
+
                 <div className="mt-3 bg-slate-950 p-2.5 rounded-xl border border-slate-850/60 flex justify-between items-center text-[9px] text-slate-500 font-mono">
                   <span>Last Punch:</span>
                   <span className="text-white font-bold">
@@ -470,7 +536,7 @@ export default function ManageWorkers() {
                   <button
                     onClick={() => toggleLoginPermission(w)}
                     className={`text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border transition ${
-                      w.login_enabled ? 'bg-rose-955/20 border-rose-900/30 text-rose-400' : 'bg-teal-500/10 border-teal-500/30 text-teal-400'
+                      w.login_enabled ? 'bg-rose-900/20 border-rose-900/30 text-rose-455' : 'bg-teal-500/10 border-teal-500/30 text-teal-400'
                     }`}
                   >
                     {w.login_enabled ? 'Disable Login' : 'Enable Login'}
@@ -480,7 +546,7 @@ export default function ManageWorkers() {
                     <button onClick={() => openEditModal(w)} className="p-2 bg-slate-950 hover:bg-slate-800 text-slate-400 rounded-lg border border-slate-850 transition">
                       <Edit className="h-3.5 w-3.5" />
                     </button>
-                    <button onClick={() => handleDeleteWorker(w.id, w.full_name)} className="p-2 bg-slate-950 hover:bg-rose-955/20 text-slate-400 hover:text-rose-400 rounded-lg border border-slate-850 transition">
+                    <button onClick={() => handleDeleteWorker(w.id, w.full_name)} className="p-2 bg-slate-950 hover:bg-rose-900/20 text-slate-405 hover:text-rose-400 rounded-lg border border-slate-850 transition">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
@@ -501,6 +567,9 @@ export default function ManageWorkers() {
                     <th className="py-4 px-5">Shift</th>
                     <th className="py-4 px-5">Liveness Status</th>
                     <th className="py-4 px-5">Login Access</th>
+                    <th className="py-4 px-5">Today OT</th>
+                    <th className="py-4 px-5">Weekly OT</th>
+                    <th className="py-4 px-5">Monthly OT</th>
                     <th className="py-4 px-5">Last Attendance punch</th>
                     <th className="py-4 px-5 text-right">Actions</th>
                   </tr>
@@ -535,7 +604,7 @@ export default function ManageWorkers() {
                             Inside Factory
                           </span>
                         ) : w.activityStatus === 'Inactive' ? (
-                          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-indigo-450 bg-indigo-500/5 px-2.5 py-0.5 rounded border border-indigo-500/10">
+                          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-indigo-455 bg-indigo-500/5 px-2.5 py-0.5 rounded border border-indigo-500/10">
                             <span className="h-1.5 w-1.5 rounded-full bg-indigo-500"></span>
                             Checked Out
                           </span>
@@ -550,13 +619,34 @@ export default function ManageWorkers() {
                         <button
                           onClick={() => toggleLoginPermission(w)}
                           className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2.5 py-0.5 rounded border transition ${
-                            w.login_enabled ? 'text-teal-400 bg-teal-500/5 border-teal-500/10' : 'text-rose-450 bg-rose-500/5 border-rose-500/10'
+                            w.login_enabled ? 'text-teal-400 bg-teal-500/5 border-teal-500/10' : 'text-rose-455 bg-rose-500/5 border-rose-500/10'
                           }`}
                         >
                           {w.login_enabled ? 'ACTIVE' : 'DISABLED'}
                         </button>
                       </td>
-                      <td className="py-3 px-5 font-mono text-[10px] text-slate-400">
+                      <td className="py-3 px-5">
+                        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded border ${
+                          w.otToday > 0 ? 'text-teal-400 bg-teal-500/5 border-teal-500/10' : 'text-slate-500 bg-slate-950 border-slate-850'
+                        }`}>
+                          {w.otToday.toFixed(2)}h
+                        </span>
+                      </td>
+                      <td className="py-3 px-5">
+                        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded border ${
+                          w.otWeekly > 0 ? 'text-indigo-400 bg-indigo-500/5 border-indigo-500/10' : 'text-slate-500 bg-slate-950 border-slate-850'
+                        }`}>
+                          {w.otWeekly.toFixed(2)}h
+                        </span>
+                      </td>
+                      <td className="py-3 px-5">
+                        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded border ${
+                          w.otMonthly > 0 ? 'text-amber-400 bg-amber-500/5 border-amber-500/10' : 'text-slate-500 bg-slate-950 border-slate-850'
+                        }`}>
+                          {w.otMonthly.toFixed(2)}h
+                        </span>
+                      </td>
+                      <td className="py-3 px-5 font-mono text-[10px] text-slate-405">
                         {w.lastPunch ? (
                           <div>
                             <span className={`font-bold uppercase ${w.lastPunch.punch_type === 'IN' ? 'text-teal-450' : 'text-indigo-400'}`}>{w.lastPunch.punch_type}</span>
@@ -569,7 +659,7 @@ export default function ManageWorkers() {
                         <button onClick={() => openEditModal(w)} className="p-1.5 bg-slate-950 hover:bg-slate-800 text-slate-400 rounded-lg border border-slate-850 transition">
                           <Edit className="h-3.5 w-3.5" />
                         </button>
-                        <button onClick={() => handleDeleteWorker(w.id, w.full_name)} className="p-1.5 bg-slate-950 hover:bg-rose-955/20 text-slate-400 rounded-lg border border-slate-850 transition">
+                        <button onClick={() => handleDeleteWorker(w.id, w.full_name)} className="p-1.5 bg-slate-950 hover:bg-rose-900/20 text-slate-400 rounded-lg border border-slate-850 transition">
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </td>
@@ -633,7 +723,7 @@ export default function ManageWorkers() {
                   placeholder="e.g. Rajesh Kumar"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full bg-slate-955 border border-slate-850 focus:border-teal-500 text-white rounded-xl py-2.5 px-3.5 text-xs outline-none transition"
+                  className="w-full bg-slate-950 border border-slate-850 focus:border-teal-500 text-white rounded-xl py-2.5 px-3.5 text-xs outline-none transition"
                 />
               </div>
 
@@ -645,12 +735,16 @@ export default function ManageWorkers() {
                     onChange={(e) => setDepartment(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-850 text-white rounded-xl py-2.5 px-3 text-xs outline-none transition cursor-pointer"
                   >
-                    <option value="Production">Production</option>
-                    <option value="Spinning">Spinning</option>
-                    <option value="Weaving">Weaving</option>
-                    <option value="Dyeing">Dyeing</option>
-                    <option value="Inspection">Inspection</option>
-                    <option value="Maintenance">Maintenance</option>
+                    <option value="Superviser">Superviser</option>
+                    <option value="Master">Master</option>
+                    <option value="BeamGater">BeamGater</option>
+                    <option value="Weaver">Weaver</option>
+                    <option value="sweeper(saaf safai)">sweeper(saaf safai)</option>
+                    <option value="Helper">Helper</option>
+                    <option value="Folder">Folder</option>
+                    <option value="Watchman">Watchman</option>
+                    <option value="Splitting">Splitting</option>
+                    <option value="Worper">Worper</option>
                   </select>
                 </div>
 
@@ -688,7 +782,7 @@ export default function ManageWorkers() {
                   placeholder="Min 8 characters"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-955 border border-slate-850 focus:border-teal-500 text-white rounded-xl py-2.5 px-3.5 text-xs outline-none transition"
+                  className="w-full bg-slate-950 border border-slate-850 focus:border-teal-500 text-white rounded-xl py-2.5 px-3.5 text-xs outline-none transition"
                 />
                 {password && (
                   <div className="mt-2 space-y-1">
@@ -773,12 +867,16 @@ export default function ManageWorkers() {
                       onChange={(e) => setDepartment(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-850 focus:border-teal-500 text-white rounded-xl py-2.5 px-3 text-xs outline-none transition cursor-pointer"
                     >
-                      <option value="Production">Production</option>
-                      <option value="Spinning">Spinning</option>
-                      <option value="Weaving">Weaving</option>
-                      <option value="Dyeing">Dyeing</option>
-                      <option value="Inspection">Inspection</option>
-                      <option value="Maintenance">Maintenance</option>
+                      <option value="Superviser">Superviser</option>
+                      <option value="Master">Master</option>
+                      <option value="BeamGater">BeamGater</option>
+                      <option value="Weaver">Weaver</option>
+                      <option value="sweeper(saaf safai)">sweeper(saaf safai)</option>
+                      <option value="Helper">Helper</option>
+                      <option value="Folder">Folder</option>
+                      <option value="Watchman">Watchman</option>
+                      <option value="Splitting">Splitting</option>
+                      <option value="Worper">Worper</option>
                     </select>
                   </div>
 
@@ -835,7 +933,7 @@ export default function ManageWorkers() {
 
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Derived Auth Email</label>
-                    <div className="w-full bg-slate-955 border border-slate-850 text-slate-500 rounded-xl py-2.5 px-3.5 text-xs font-mono select-all">
+                    <div className="w-full bg-slate-950 border border-slate-850 text-slate-500 rounded-xl py-2.5 px-3.5 text-xs font-mono select-all">
                       {workerId ? `${workerId.toLowerCase()}${WORKER_EMAIL_SUFFIX}` : `id${WORKER_EMAIL_SUFFIX}`}
                     </div>
                   </div>

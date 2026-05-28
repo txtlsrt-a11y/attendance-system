@@ -104,7 +104,11 @@ export default function AttendanceLogs() {
         const queryLower = filterWorker.toLowerCase()
         filtered = filtered.filter(log => 
           log.profiles?.full_name.toLowerCase().includes(queryLower) ||
-          log.profiles?.worker_id.toLowerCase().includes(queryLower)
+          log.profiles?.worker_id.toLowerCase().includes(queryLower) ||
+          (log.profiles?.mobile || '').includes(queryLower) ||
+          (log.profiles?.department || '').toLowerCase().includes(queryLower) ||
+          (log.shifts?.shift_name || '').toLowerCase().includes(queryLower) ||
+          (log.status || '').toLowerCase().includes(queryLower)
         )
       }
 
@@ -206,6 +210,35 @@ export default function AttendanceLogs() {
       // Construct date string with timezone offset
       const combinedDateTime = new Date(`${corrDate}T${corrTime}:00`).toISOString()
 
+      // Automatic Overtime Calculation for Manual Entries
+      let overtimeMinutes = 0
+      let overtimeHours = 0
+      let overtimeStatus = 'None'
+
+      if (corrPunchType === 'OUT' && corrShiftId) {
+        const shift = shifts.find(s => s.id === corrShiftId)
+        if (shift) {
+          const [punchH, punchM] = corrTime.split(':')
+          const punchMinutes = parseInt(punchH, 10) * 60 + parseInt(punchM, 10)
+
+          const [shiftEndH, shiftEndM] = shift.end_time.split(':')
+          const shiftEndMinutes = parseInt(shiftEndH, 10) * 60 + parseInt(shiftEndM, 10)
+
+          let diffMinutes = punchMinutes - shiftEndMinutes
+          if (diffMinutes < -720) {
+            diffMinutes += 1440
+          } else if (diffMinutes > 720) {
+            diffMinutes -= 1440
+          }
+
+          if (diffMinutes > (shift.grace_minutes || 15)) {
+            overtimeMinutes = diffMinutes
+            overtimeHours = parseFloat((diffMinutes / 60).toFixed(2))
+            overtimeStatus = 'Approved'
+          }
+        }
+      }
+
       const payload = {
         worker_id: corrWorkerId,
         shift_id: corrShiftId || null,
@@ -213,7 +246,10 @@ export default function AttendanceLogs() {
         status: corrStatus,
         punch_time: combinedDateTime,
         attendance_date: corrDate,
-        selfie_url: currentLog?.selfie_url || 'https://via.placeholder.com/150?text=Manual+Correction' // Placeholder for admin manual entries
+        selfie_url: currentLog?.selfie_url || 'https://via.placeholder.com/150?text=Manual+Correction',
+        overtime_minutes: overtimeMinutes,
+        overtime_hours: overtimeHours,
+        overtime_status: overtimeStatus
       }
 
       if (currentLog) {
@@ -406,6 +442,11 @@ export default function AttendanceLogs() {
                       }`}>
                         {log.status}
                       </span>
+                      {log.punch_type === 'OUT' && parseFloat(log.overtime_hours || 0) > 0 && (
+                        <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-teal-500/10 text-teal-405 border border-teal-500/20">
+                          +{parseFloat(log.overtime_hours).toFixed(2)}h OT
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -454,21 +495,21 @@ export default function AttendanceLogs() {
                       className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase border transition ${
                         log.status === 'Absent'
                           ? 'bg-slate-950/20 border-slate-900 text-slate-700 cursor-not-allowed'
-                          : 'bg-rose-955/15 border-rose-900/30 text-rose-450 hover:bg-rose-900/25'
+                          : 'bg-rose-900/15 border-rose-900/30 text-rose-450 hover:bg-rose-900/25'
                       }`}
                     >
                       Reject
                     </button>
                     <button
                       onClick={() => openCorrectionModal(log)}
-                      className="p-1.5 bg-slate-955 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg border border-slate-850 transition"
+                      className="p-1.5 bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg border border-slate-850 transition"
                       title="Edit entry"
                     >
                       <Edit3 className="h-3.5 w-3.5" />
                     </button>
                     <button
                       onClick={() => handleDeleteLog(log.id)}
-                      className="p-1.5 bg-slate-955 hover:bg-rose-955/20 text-slate-400 hover:text-rose-400 rounded-lg border border-slate-850 transition"
+                      className="p-1.5 bg-slate-950 hover:bg-rose-900/20 text-slate-400 hover:text-rose-400 rounded-lg border border-slate-850 transition"
                       title="Delete entry"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -523,6 +564,11 @@ export default function AttendanceLogs() {
                         }`}>
                           {log.punch_type}
                         </span>
+                        {log.punch_type === 'OUT' && parseFloat(log.overtime_hours || 0) > 0 && (
+                          <span className="ml-2 inline-flex items-center gap-1.5 text-[9px] font-extrabold text-teal-405 bg-teal-500/5 px-2 py-0.5 rounded border border-teal-500/10">
+                            +{parseFloat(log.overtime_hours).toFixed(2)} hrs OT
+                          </span>
+                        )}
                       </td>
                       <td className="py-4 px-6">
                         <span className="font-bold text-white block">{new Date(log.punch_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
@@ -571,7 +617,7 @@ export default function AttendanceLogs() {
                           className={`p-1.5 rounded-lg border transition ${
                             log.status === 'Absent'
                               ? 'bg-slate-950/20 border-slate-900 text-slate-700 cursor-not-allowed'
-                              : 'bg-rose-955/15 border-rose-900/30 text-rose-450 hover:bg-rose-900/25'
+                              : 'bg-rose-900/15 border-rose-900/30 text-rose-450 hover:bg-rose-900/25'
                           }`}
                           title="Reject (Set Absent)"
                         >
@@ -586,7 +632,7 @@ export default function AttendanceLogs() {
                         </button>
                         <button
                           onClick={() => handleDeleteLog(log.id)}
-                          className="p-1.5 bg-slate-950 hover:bg-rose-955/20 text-slate-400 hover:text-rose-450 rounded-lg border border-slate-850 transition"
+                          className="p-1.5 bg-slate-950 hover:bg-rose-900/20 text-slate-405 hover:text-rose-450 rounded-lg border border-slate-850 transition"
                           title="Delete entry"
                         >
                           <Trash2 className="h-3.5 w-3.5" />

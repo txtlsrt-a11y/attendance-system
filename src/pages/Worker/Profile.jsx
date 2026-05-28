@@ -1,20 +1,73 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { formatTime12h } from '../../utils/dateHelpers'
-import { User, Phone, Briefcase, CalendarDays, Key, MapPin } from 'lucide-react'
+import { supabase } from '../../supabase'
+import { formatTime12h, getLocalDateString } from '../../utils/dateHelpers'
+import { User, Phone, Briefcase, CalendarDays, Key, MapPin, Timer } from 'lucide-react'
 
 export default function WorkerProfile() {
   const { profile } = useAuth()
+  const [stats, setStats] = useState({ today: 0, weekly: 0, monthly: 0 })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchWorkerStats = async () => {
+      if (!profile) return
+      try {
+        const thirtyOneDaysAgo = new Date()
+        thirtyOneDaysAgo.setDate(thirtyOneDaysAgo.getDate() - 31)
+        const thirtyOneDaysAgoStr = getLocalDateString(thirtyOneDaysAgo)
+
+        const { data, error } = await supabase
+          .from('attendance')
+          .select('*')
+          .eq('worker_id', profile.id)
+          .gte('attendance_date', thirtyOneDaysAgoStr)
+
+        if (error) throw error
+
+        const todayStr = getLocalDateString()
+        const startOfMonth = new Date()
+        startOfMonth.setDate(1)
+        const startOfMonthStr = getLocalDateString(startOfMonth)
+
+        const sevenDaysAgo = new Date()
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+        const sevenDaysAgoStr = getLocalDateString(sevenDaysAgo)
+
+        const logs = data || []
+
+        const otToday = logs
+          .filter(log => log.attendance_date === todayStr)
+          .reduce((sum, log) => sum + parseFloat(log.overtime_hours || 0), 0)
+
+        const otWeekly = logs
+          .filter(log => log.attendance_date >= sevenDaysAgoStr)
+          .reduce((sum, log) => sum + parseFloat(log.overtime_hours || 0), 0)
+
+        const otMonthly = logs
+          .filter(log => log.attendance_date >= startOfMonthStr)
+          .reduce((sum, log) => sum + parseFloat(log.overtime_hours || 0), 0)
+
+        setStats({ today: otToday, weekly: otWeekly, monthly: otMonthly })
+      } catch (err) {
+        console.error('Error fetching worker profile stats:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchWorkerStats()
+  }, [profile])
 
   return (
     <div className="min-h-screen bg-slate-950 bg-weave-pattern pb-12">
       <div className="max-w-xl mx-auto px-4 pt-10">
         
         {/* Profile Card Header */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden mb-6">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden mb-6 text-center">
           <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/10 rounded-full blur-2xl pointer-events-none"></div>
 
-          <div className="flex flex-col items-center text-center">
+          <div className="flex flex-col items-center">
             {profile?.photo_url ? (
               <img
                 src={profile.photo_url}
@@ -22,7 +75,7 @@ export default function WorkerProfile() {
                 className="h-28 w-28 rounded-full object-cover border-4 border-slate-800 shadow-xl"
               />
             ) : (
-              <div className="h-28 w-28 rounded-full bg-slate-800 border-4 border-slate-800 shadow-xl flex items-center justify-center text-slate-350">
+              <div className="h-28 w-28 rounded-full bg-slate-800 border-4 border-slate-800 shadow-xl flex items-center justify-center text-slate-350 mx-auto">
                 <User className="h-12 w-12" />
               </div>
             )}
@@ -33,8 +86,30 @@ export default function WorkerProfile() {
             </span>
           </div>
 
+          {/* Overtime Stats Row */}
+          <div className="grid grid-cols-3 gap-3.5 mt-6 border-t border-slate-800/80 pt-6">
+            <div className="bg-slate-950/60 p-3 rounded-2xl border border-slate-850">
+              <span className="text-[9px] font-black uppercase text-slate-500 block tracking-wider">Today's OT</span>
+              <span className={`text-lg font-black block mt-1 ${stats.today > 0 ? 'text-teal-405' : 'text-slate-400'}`}>
+                {loading ? '...' : `${stats.today.toFixed(2)}h`}
+              </span>
+            </div>
+            <div className="bg-slate-950/60 p-3 rounded-2xl border border-slate-850">
+              <span className="text-[9px] font-black uppercase text-slate-500 block tracking-wider">Weekly OT</span>
+              <span className={`text-lg font-black block mt-1 ${stats.weekly > 0 ? 'text-indigo-400' : 'text-slate-400'}`}>
+                {loading ? '...' : `${stats.weekly.toFixed(2)}h`}
+              </span>
+            </div>
+            <div className="bg-slate-950/60 p-3 rounded-2xl border border-slate-850">
+              <span className="text-[9px] font-black uppercase text-slate-500 block tracking-wider">Monthly OT</span>
+              <span className={`text-lg font-black block mt-1 ${stats.monthly > 0 ? 'text-amber-405' : 'text-slate-400'}`}>
+                {loading ? '...' : `${stats.monthly.toFixed(2)}h`}
+              </span>
+            </div>
+          </div>
+
           {/* Details list */}
-          <div className="mt-8 space-y-4 border-t border-slate-800/80 pt-6">
+          <div className="mt-6 space-y-4 border-t border-slate-800/80 pt-6">
             
             <div className="flex items-center gap-4 text-slate-300">
               <Key className="h-5 w-5 text-indigo-400 flex-shrink-0" />
@@ -67,7 +142,7 @@ export default function WorkerProfile() {
                   Department
                 </span>
                 <span className="text-sm font-semibold text-white">
-                  {profile?.department || 'Production'}
+                  {profile?.department || 'Helper'}
                 </span>
               </div>
             </div>

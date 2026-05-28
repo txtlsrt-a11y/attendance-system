@@ -25,6 +25,7 @@ export default function WorkerDashboard() {
   const [lastPunch, setLastPunch] = useState(null)
   const [todayPunches, setTodayPunches] = useState([])
   const [history, setHistory] = useState([])
+  const [stats, setStats] = useState({ today: 0, weekly: 0, monthly: 0 })
   const [loading, setLoading] = useState(true)
   const [punchingType, setPunchingType] = useState(null) // 'IN' or 'OUT'
   const [showCamera, setShowCamera] = useState(false)
@@ -56,16 +57,44 @@ export default function WorkerDashboard() {
       const last = todayData && todayData.length > 0 ? todayData[0] : null
       setLastPunch(last)
 
-      // Fetch past 10 logs for list
+      // Fetch past 31 days of logs for OT calculations
+      const thirtyOneDaysAgo = new Date()
+      thirtyOneDaysAgo.setDate(thirtyOneDaysAgo.getDate() - 31)
+      const thirtyOneDaysAgoStr = getLocalDateString(thirtyOneDaysAgo)
+
       const { data: allData, error: allErr } = await supabase
         .from('attendance')
         .select('*, shifts(*)')
         .eq('worker_id', profile.id)
+        .gte('attendance_date', thirtyOneDaysAgoStr)
         .order('punch_time', { ascending: false })
-        .limit(10)
 
       if (allErr) throw allErr
-      setHistory(allData || [])
+      
+      const logs = allData || []
+      setHistory(logs.slice(0, 10))
+
+      const startOfMonth = new Date()
+      startOfMonth.setDate(1)
+      const startOfMonthStr = getLocalDateString(startOfMonth)
+
+      const sevenDaysAgo = new Date()
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+      const sevenDaysAgoStr = getLocalDateString(sevenDaysAgo)
+
+      const otToday = logs
+        .filter(log => log.attendance_date === todayStr)
+        .reduce((sum, log) => sum + parseFloat(log.overtime_hours || 0), 0)
+
+      const otWeekly = logs
+        .filter(log => log.attendance_date >= sevenDaysAgoStr)
+        .reduce((sum, log) => sum + parseFloat(log.overtime_hours || 0), 0)
+
+      const otMonthly = logs
+        .filter(log => log.attendance_date >= startOfMonthStr)
+        .reduce((sum, log) => sum + parseFloat(log.overtime_hours || 0), 0)
+
+      setStats({ today: otToday, weekly: otWeekly, monthly: otMonthly })
 
     } catch (err) {
       console.error('Error fetching attendance logs:', err)
@@ -167,6 +196,9 @@ export default function WorkerDashboard() {
       // 3. Compute attendance status (IN: check grace; OUT: check early exit)
       const now = new Date()
       let status = 'Present'
+      let overtimeMinutes = 0
+      let overtimeHours = 0
+      let overtimeStatus = 'None'
 
       if (punchingType === 'IN') {
         status = calculateAttendanceStatus(now, shift.start_time, shift.grace_minutes)
@@ -178,6 +210,24 @@ export default function WorkerDashboard() {
         status = matchingIn ? matchingIn.status : 'Present'
         if (hasEarlyExit && status === 'Present') {
           status = 'Late' // modify status or report early exit
+        }
+
+        // Automatic Overtime Calculation:
+        const punchMinutes = now.getHours() * 60 + now.getMinutes()
+        const [shiftEndH, shiftEndM] = shift.end_time.split(':')
+        const shiftEndMinutes = parseInt(shiftEndH, 10) * 60 + parseInt(shiftEndM, 10)
+
+        let diffMinutes = punchMinutes - shiftEndMinutes
+        if (diffMinutes < -720) {
+          diffMinutes += 1440
+        } else if (diffMinutes > 720) {
+          diffMinutes -= 1440
+        }
+
+        if (diffMinutes > (shift.grace_minutes || 15)) {
+          overtimeMinutes = diffMinutes
+          overtimeHours = parseFloat((diffMinutes / 60).toFixed(2))
+          overtimeStatus = 'Approved'
         }
       }
 
@@ -193,7 +243,10 @@ export default function WorkerDashboard() {
           longitude: gpsCoordinates.longitude,
           punch_time: now.toISOString(),
           attendance_date: getLocalDateString(now),
-          status: status
+          status: status,
+          overtime_minutes: overtimeMinutes,
+          overtime_hours: overtimeHours,
+          overtime_status: overtimeStatus
         })
 
       if (insertErr) throw insertErr
@@ -388,6 +441,28 @@ export default function WorkerDashboard() {
               )}
             </div>
 
+            {/* My Overtime Summary Row */}
+            <div className="mt-4 grid grid-cols-3 gap-3">
+              <div className="bg-slate-900 border border-slate-850 p-3.5 rounded-2xl flex flex-col items-center text-center shadow-lg relative overflow-hidden">
+                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">Today OT</span>
+                <span className={`text-sm font-black block mt-1 ${stats.today > 0 ? 'text-teal-400' : 'text-slate-400'}`}>
+                  {stats.today.toFixed(2)}h
+                </span>
+              </div>
+              <div className="bg-slate-900 border border-slate-850 p-3.5 rounded-2xl flex flex-col items-center text-center shadow-lg relative overflow-hidden">
+                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">Weekly OT</span>
+                <span className={`text-sm font-black block mt-1 ${stats.weekly > 0 ? 'text-indigo-400' : 'text-slate-400'}`}>
+                  {stats.weekly.toFixed(2)}h
+                </span>
+              </div>
+              <div className="bg-slate-900 border border-slate-850 p-3.5 rounded-2xl flex flex-col items-center text-center shadow-lg relative overflow-hidden">
+                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">Monthly OT</span>
+                <span className={`text-sm font-black block mt-1 ${stats.monthly > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
+                  {stats.monthly.toFixed(2)}h
+                </span>
+              </div>
+            </div>
+
           </div>
 
           {/* Right Panel: Recent Punches (Takes 1 col) */}
@@ -437,6 +512,11 @@ export default function WorkerDashboard() {
                         <span className="text-[10px] text-slate-500 font-bold">
                           {log.attendance_date}
                         </span>
+                        {parseFloat(log.overtime_hours || 0) > 0 && (
+                          <span className="text-[9px] font-black bg-teal-500/10 text-teal-400 border border-teal-500/25 px-1.5 py-0.5 rounded ml-2">
+                            +{parseFloat(log.overtime_hours).toFixed(2)} hrs OT
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs font-bold text-white mt-1">
                         {new Date(log.punch_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
