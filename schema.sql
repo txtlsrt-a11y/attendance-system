@@ -1,7 +1,8 @@
--- TEXTILE SHIFT ATTENDANCE SYSTEM - PRODUCTION READY SECURE DATABASE SCHEMA
+-- TEXTILE SHIFT ATTENDANCE SYSTEM - ADVANCED PRODUCTION READY SCHEMA
 
--- 1. Enable UUID Extension
+-- 1. Enable UUID Extension and Cryptography
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 2. Create SHIFTS Table
 CREATE TABLE IF NOT EXISTS public.shifts (
@@ -24,10 +25,11 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     department TEXT,
     photo_url TEXT,
     shift_id UUID REFERENCES public.shifts(id) ON DELETE SET NULL,
+    login_enabled BOOLEAN DEFAULT TRUE, -- Admin deactivation control
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Index on worker_id for rapid lookups during worker tab logins
+-- Index on worker_id for rapid logins
 CREATE INDEX IF NOT EXISTS idx_profiles_worker_id ON public.profiles(worker_id);
 
 -- 4. Create ATTENDANCE Table
@@ -45,7 +47,7 @@ CREATE TABLE IF NOT EXISTS public.attendance (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Indexes for statistics loading and reports audit trails
+-- Indexes for statistics and audit trails
 CREATE INDEX IF NOT EXISTS idx_attendance_worker_id ON public.attendance(worker_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_date ON public.attendance(attendance_date);
 
@@ -72,10 +74,10 @@ VALUES (1, 'Textile Shift Attendance System', 15, 15)
 ON CONFLICT DO NOTHING;
 
 -- =======================================================
--- 8. SECURITY DEFINER HELPER FUNCTIONS (ELIMINATES RLS RECURSION)
+-- 8. SECURITY DEFINER HELPER FUNCTIONS (RLS recursion protection)
 -- =======================================================
 
--- Helper to check if a user is an administrator (Bypasses RLS recursion)
+-- Helper to check if a user is an administrator
 CREATE OR REPLACE FUNCTION public.is_admin(user_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
@@ -86,24 +88,77 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- Helper to check if a user is a worker (Bypasses RLS recursion)
+-- Helper to check if a user is an active worker
 CREATE OR REPLACE FUNCTION public.is_worker(user_id UUID)
 RETURNS BOOLEAN AS $$
 BEGIN
     RETURN EXISTS (
         SELECT 1 FROM public.profiles
-        WHERE id = user_id AND role = 'worker'
+        WHERE id = user_id AND role = 'worker' AND login_enabled = TRUE
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- =======================================================
--- 9. AUTO-PROFILE CREATION TRIGGER (auth.users sync)
+-- 9. SECURE DATABASE ADMINISTRATIVE CONTROLS (RPC)
+-- =======================================================
+
+-- Administrative password reset (Directly hashes and updates in auth.users)
+CREATE OR REPLACE FUNCTION public.admin_reset_password(worker_uid UUID, new_password TEXT)
+RETURNS VOID AS $$
+BEGIN
+    -- Strict authorization check: Caller must be admin!
+    IF NOT public.is_admin(auth.uid()) THEN
+        RAISE EXCEPTION 'Unauthorized: Only administrators can reset worker passwords';
+    END IF;
+
+    UPDATE auth.users
+    SET encrypted_password = crypt(new_password, gen_salt('bf', 10))
+    WHERE id = worker_uid;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+-- Administrative worker account deletion (Deletes from auth.users to cascade properly)
+CREATE OR REPLACE FUNCTION public.admin_delete_worker(worker_uid UUID)
+RETURNS VOID AS $$
+BEGIN
+    -- Strict authorization check: Caller must be admin!
+    IF NOT public.is_admin(auth.uid()) THEN
+        RAISE EXCEPTION 'Unauthorized: Only administrators can delete worker accounts';
+    END IF;
+
+    DELETE FROM auth.users
+    WHERE id = worker_uid;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+-- Administrative worker email/ID updates (Syncs worker login ID to auth email)
+CREATE OR REPLACE FUNCTION public.admin_update_worker_email(worker_uid UUID, new_worker_id TEXT)
+RETURNS VOID AS $$
+DECLARE
+    new_email TEXT;
+BEGIN
+    -- Strict authorization check: Caller must be admin!
+    IF NOT public.is_admin(auth.uid()) THEN
+        RAISE EXCEPTION 'Unauthorized: Only administrators can update worker login IDs';
+    END IF;
+
+    new_email := lower(new_worker_id) || '@textile-attendance.com';
+
+    UPDATE auth.users
+    SET email = new_email,
+        normalized_email = new_email
+    WHERE id = worker_uid;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
+
+-- =======================================================
+-- 10. AUTO-PROFILE CREATION TRIGGER (auth.users sync)
 -- =======================================================
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO public.profiles (id, role, full_name, worker_id, mobile, department, shift_id, photo_url)
+    INSERT INTO public.profiles (id, role, full_name, worker_id, mobile, department, shift_id, photo_url, login_enabled)
     VALUES (
         NEW.id,
         COALESCE(NEW.raw_user_meta_data->>'role', 'worker'),
@@ -116,7 +171,8 @@ BEGIN
             THEN (NEW.raw_user_meta_data->>'shift_id')::UUID 
             ELSE NULL 
         END,
-        COALESCE(NEW.raw_user_meta_data->>'photo_url', NULL)
+        COALESCE(NEW.raw_user_meta_data->>'photo_url', NULL),
+        COALESCE((NEW.raw_user_meta_data->>'login_enabled')::BOOLEAN, TRUE)
     );
     RETURN NEW;
 END;
@@ -129,16 +185,15 @@ CREATE TRIGGER on_auth_user_created
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- =======================================================
--- 10. ROW LEVEL SECURITY (RLS) POLICIES
+-- 11. ROW LEVEL SECURITY (RLS) POLICIES
 -- =======================================================
 
--- Enable RLS
 ALTER TABLE public.shifts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attendance ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 
--- --- SHIFTS POLICIES ---
+-- Shifts Policies
 CREATE POLICY "Allow read access to shifts for authenticated users" 
     ON public.shifts FOR SELECT TO authenticated USING (true);
 
@@ -147,7 +202,7 @@ CREATE POLICY "Allow all operations for admin on shifts"
     USING (public.is_admin(auth.uid()))
     WITH CHECK (public.is_admin(auth.uid()));
 
--- --- PROFILES POLICIES ---
+-- Profiles Policies
 CREATE POLICY "Allow read access to profiles for authenticated users" 
     ON public.profiles FOR SELECT TO authenticated USING (true);
 
@@ -161,21 +216,21 @@ CREATE POLICY "Allow admin full access to profiles"
     USING (public.is_admin(auth.uid()))
     WITH CHECK (public.is_admin(auth.uid()));
 
--- --- ATTENDANCE POLICIES ---
+-- Attendance Policies
 CREATE POLICY "Allow workers to view their own attendance" 
     ON public.attendance FOR SELECT TO authenticated 
-    USING (worker_id = auth.uid() OR public.is_admin(auth.uid()));
+    USING ((worker_id = auth.uid() AND public.is_worker(auth.uid())) OR public.is_admin(auth.uid()));
 
-CREATE POLICY "Allow workers to insert their own attendance record" 
+CREATE POLICY "Allow active workers to insert their own attendance" 
     ON public.attendance FOR INSERT TO authenticated 
-    WITH CHECK (worker_id = auth.uid());
+    WITH CHECK (worker_id = auth.uid() AND public.is_worker(auth.uid()));
 
 CREATE POLICY "Allow admin full control on attendance" 
     ON public.attendance FOR ALL TO authenticated 
     USING (public.is_admin(auth.uid()))
     WITH CHECK (public.is_admin(auth.uid()));
 
--- --- SETTINGS POLICIES ---
+-- Settings Policies
 CREATE POLICY "Allow read access to settings for authenticated users" 
     ON public.settings FOR SELECT TO authenticated USING (true);
 
@@ -185,18 +240,15 @@ CREATE POLICY "Allow admin to update settings"
     WITH CHECK (public.is_admin(auth.uid()));
 
 -- =======================================================
--- 11. STORAGE BUCKET CREATION & AUDITED SECURITY POLICIES
+-- 12. STORAGE BUCKET CREATION & AUDITED SECURITY POLICIES
 -- =======================================================
 
--- Create storage bucket
 INSERT INTO storage.buckets (id, name, public) 
 VALUES ('attendance-selfies', 'attendance-selfies', TRUE)
 ON CONFLICT (id) DO NOTHING;
 
--- Enable RLS on storage metadata (standard Supabase mechanism)
 ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
--- Storage Read Policy: Workers can only view their own selfies folder, Admins can view all folders
 CREATE POLICY "Allow read access to selfies based on folder ownership or role"
     ON storage.objects FOR SELECT TO authenticated
     USING (
@@ -207,16 +259,14 @@ CREATE POLICY "Allow read access to selfies based on folder ownership or role"
         )
     );
 
--- Storage Insert Policy: Workers can only upload files inside a folder named after their User UUID
 CREATE POLICY "Allow workers to upload selfies strictly in their own folder"
     ON storage.objects FOR INSERT TO authenticated
     WITH CHECK (
         bucket_id = 'attendance-selfies' AND 
-        auth.role() = 'authenticated' AND 
+        public.is_worker(auth.uid()) AND 
         (storage.foldername(name))[1] = auth.uid()::text
     );
 
--- Storage Delete/Modify Policy: Only administrators can delete or modify file assets
 CREATE POLICY "Allow admins full control on selfie assets"
     ON storage.objects FOR ALL TO authenticated
     USING (

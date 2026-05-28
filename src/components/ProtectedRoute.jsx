@@ -1,9 +1,16 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export const ProtectedRoute = ({ children, allowedRoles }) => {
-  const { user, profile, loading } = useAuth()
+  const { user, profile, loading, signOut } = useAuth()
+
+  useEffect(() => {
+    if (user && profile && profile.login_enabled === false) {
+      console.log('Session deactivated by admin. Enforcing logout...')
+      signOut().catch(err => console.error('Signout error:', err))
+    }
+  }, [user, profile, signOut])
 
   // Show loading spinner while checking auth session
   if (loading) {
@@ -19,8 +26,8 @@ export const ProtectedRoute = ({ children, allowedRoles }) => {
     )
   }
 
-  // Redirect to login if user session is absent
-  if (!user) {
+  // Redirect to login if user session is absent or account is deactivated
+  if (!user || (profile && profile.login_enabled === false)) {
     return <Navigate to="/login" replace />
   }
 

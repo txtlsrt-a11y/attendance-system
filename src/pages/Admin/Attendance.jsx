@@ -360,124 +360,245 @@ export default function AttendanceLogs() {
           <p className="text-xs">No attendance entries found for this configuration.</p>
         </div>
       ) : (
-        <div className="bg-slate-900 border border-slate-850 rounded-3xl overflow-hidden shadow-xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-950 border-b border-slate-850 text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                  <th className="py-4 px-6">Selfie</th>
-                  <th className="py-4 px-6">Worker Details</th>
-                  <th className="py-4 px-6">Assigned Shift</th>
-                  <th className="py-4 px-6">Punch Type</th>
-                  <th className="py-4 px-6">Logged Time</th>
-                  <th className="py-4 px-6">GPS Coordinates</th>
-                  <th className="py-4 px-6">Status</th>
-                  <th className="py-4 px-6 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-850/60 text-slate-300 text-xs">
-                {logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-855/30 transition">
-                    <td className="py-4 px-6">
-                      <div className="relative group">
-                        <img
-                          src={log.selfie_url}
-                          alt="Selfie"
-                          className="h-10 w-10 rounded-lg object-cover border border-slate-800"
-                        />
-                        <div className="absolute left-12 top-0 hidden group-hover:block z-55 bg-slate-950 border border-slate-700 p-1 rounded shadow-2xl">
-                          <img src={log.selfie_url} alt="Zoom" className="h-32 w-32 object-cover rounded" />
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className="font-extrabold text-white block">{log.profiles?.full_name}</span>
-                      <span className="text-[10px] font-mono text-slate-500 block">ID: {log.profiles?.worker_id} | {log.profiles?.department}</span>
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className="font-semibold">{log.shifts?.shift_name || 'No Shift'}</span>
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded ${
+        <>
+          {/* MOBILE ONLY: Attendance Card Layout Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:hidden">
+            {logs.map((log) => (
+              <div 
+                key={log.id} 
+                className="bg-slate-900 border border-slate-850 rounded-2xl p-4 flex flex-col justify-between shadow"
+              >
+                <div className="flex gap-3 items-start">
+                  {/* Selfie Preview with Hover zoom fallback */}
+                  <div className="relative group flex-shrink-0">
+                    <img
+                      src={log.selfie_url}
+                      alt="Selfie"
+                      className="h-14 w-14 rounded-xl object-cover border border-slate-800 shadow"
+                    />
+                    <div className="absolute left-16 top-0 hidden group-hover:block z-50 bg-slate-950 border border-slate-700 p-1 rounded-lg shadow-2xl">
+                      <img src={log.selfie_url} alt="Zoom" className="h-32 w-32 object-cover rounded" />
+                    </div>
+                  </div>
+
+                  {/* Details block */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 justify-between">
+                      <h4 className="text-xs font-black text-white truncate">{log.profiles?.full_name}</h4>
+                      <span className="text-[8px] font-mono font-bold bg-slate-950 px-1.5 py-0.5 rounded text-slate-400">
+                        {log.profiles?.worker_id}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mt-0.5">
+                      {log.profiles?.department} • {log.shifts?.shift_name || 'No Shift'}
+                    </p>
+                    
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ${
                         log.punch_type === 'IN' ? 'bg-teal-500/10 text-teal-400' : 'bg-indigo-500/10 text-indigo-400'
                       }`}>
                         {log.punch_type}
                       </span>
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className="font-bold text-white block">{new Date(log.punch_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                      <span className="text-[9px] text-slate-500 block">{log.attendance_date}</span>
-                    </td>
-                    <td className="py-4 px-6">
-                      {log.latitude ? (
-                        <a
-                          href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-center gap-1.5 text-teal-400 hover:text-teal-350 hover:underline font-mono text-[10px]"
-                        >
-                          <MapPin className="h-3.5 w-3.5" />
-                          {log.latitude.toFixed(4)}, {log.longitude.toFixed(4)}
-                        </a>
-                      ) : (
-                        <span className="text-slate-600 font-mono text-[10px]">Unavailable</span>
-                      )}
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                      <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${
                         log.status === 'Present' ? 'bg-emerald-500/10 text-emerald-450 border border-emerald-500/20' :
                         log.status === 'Late' ? 'bg-amber-500/10 text-amber-450 border border-amber-500/20' :
                         'bg-purple-500/10 text-purple-400 border border-purple-500/20'
                       }`}>
                         {log.status}
                       </span>
-                    </td>
-                    <td className="py-4 px-6 text-right space-x-1.5 whitespace-nowrap">
-                      <button
-                        onClick={() => handleApproveLog(log.id)}
-                        disabled={log.status === 'Present'}
-                        className={`p-1.5 rounded-lg border transition ${
-                          log.status === 'Present'
-                            ? 'bg-slate-950/20 border-slate-900 text-slate-700 cursor-not-allowed'
-                            : 'bg-emerald-950/15 border-emerald-900/30 text-emerald-400 hover:bg-emerald-900/25'
-                        }`}
-                        title="Approve (Set Present)"
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-850/65 pt-3 mt-4 space-y-2">
+                  <div className="flex justify-between items-center text-[10px] text-slate-500">
+                    <span>Logged Time:</span>
+                    <span className="font-extrabold text-white font-mono">
+                      {new Date(log.punch_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} ({log.attendance_date})
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-[10px] text-slate-500">
+                    <span>GPS Coordinates:</span>
+                    {log.latitude ? (
+                      <a
+                        href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 text-teal-400 hover:text-teal-350 hover:underline font-mono text-[9px]"
                       >
-                        <Check className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleRejectLog(log.id)}
-                        disabled={log.status === 'Absent'}
-                        className={`p-1.5 rounded-lg border transition ${
-                          log.status === 'Absent'
-                            ? 'bg-slate-950/20 border-slate-900 text-slate-700 cursor-not-allowed'
-                            : 'bg-rose-955/15 border-rose-900/30 text-rose-450 hover:bg-rose-900/25'
-                        }`}
-                        title="Reject (Set Absent)"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => openCorrectionModal(log)}
-                        className="p-1.5 bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg border border-slate-850 transition"
-                        title="Edit entry"
-                      >
-                        <Edit3 className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteLog(log.id)}
-                        className="p-1.5 bg-slate-950 hover:bg-rose-955/20 text-slate-400 hover:text-rose-400 rounded-lg border border-slate-850 transition"
-                        title="Delete entry"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        <MapPin className="h-3 w-3" />
+                        {log.latitude.toFixed(4)}, {log.longitude.toFixed(4)}
+                      </a>
+                    ) : (
+                      <span className="font-mono text-[9px] text-slate-600">Unavailable</span>
+                    )}
+                  </div>
+
+                  {/* Actions button grid */}
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-850/40">
+                    <button
+                      onClick={() => handleApproveLog(log.id)}
+                      disabled={log.status === 'Present'}
+                      className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase border transition ${
+                        log.status === 'Present'
+                          ? 'bg-slate-950/20 border-slate-900 text-slate-700 cursor-not-allowed'
+                          : 'bg-emerald-950/15 border-emerald-900/30 text-emerald-400 hover:bg-emerald-900/25'
+                      }`}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => handleRejectLog(log.id)}
+                      disabled={log.status === 'Absent'}
+                      className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase border transition ${
+                        log.status === 'Absent'
+                          ? 'bg-slate-950/20 border-slate-900 text-slate-700 cursor-not-allowed'
+                          : 'bg-rose-955/15 border-rose-900/30 text-rose-450 hover:bg-rose-900/25'
+                      }`}
+                    >
+                      Reject
+                    </button>
+                    <button
+                      onClick={() => openCorrectionModal(log)}
+                      className="p-1.5 bg-slate-955 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg border border-slate-850 transition"
+                      title="Edit entry"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteLog(log.id)}
+                      className="p-1.5 bg-slate-955 hover:bg-rose-955/20 text-slate-400 hover:text-rose-400 rounded-lg border border-slate-850 transition"
+                      title="Delete entry"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
+
+          {/* DESKTOP ONLY: Standard Attendance Grid Table */}
+          <div className="hidden lg:block bg-slate-900 border border-slate-850 rounded-3xl overflow-hidden shadow-xl">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-950 border-b border-slate-850 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                    <th className="py-4 px-6">Selfie</th>
+                    <th className="py-4 px-6">Worker Details</th>
+                    <th className="py-4 px-6">Assigned Shift</th>
+                    <th className="py-4 px-6">Punch Type</th>
+                    <th className="py-4 px-6">Logged Time</th>
+                    <th className="py-4 px-6">GPS Coordinates</th>
+                    <th className="py-4 px-6">Status</th>
+                    <th className="py-4 px-6 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-850/60 text-slate-300 text-xs">
+                  {logs.map((log) => (
+                    <tr key={log.id} className="hover:bg-slate-855/30 transition">
+                      <td className="py-4 px-6">
+                        <div className="relative group">
+                          <img
+                            src={log.selfie_url}
+                            alt="Selfie"
+                            className="h-10 w-10 rounded-lg object-cover border border-slate-800"
+                          />
+                          <div className="absolute left-12 top-0 hidden group-hover:block z-55 bg-slate-950 border border-slate-700 p-1 rounded shadow-2xl">
+                            <img src={log.selfie_url} alt="Zoom" className="h-32 w-32 object-cover rounded" />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-6">
+                        <span className="font-extrabold text-white block">{log.profiles?.full_name}</span>
+                        <span className="text-[10px] font-mono text-slate-500 block">ID: {log.profiles?.worker_id} | {log.profiles?.department}</span>
+                      </td>
+                      <td className="py-4 px-6">
+                        <span className="font-semibold">{log.shifts?.shift_name || 'No Shift'}</span>
+                      </td>
+                      <td className="py-4 px-6">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded ${
+                          log.punch_type === 'IN' ? 'bg-teal-500/10 text-teal-400' : 'bg-indigo-500/10 text-indigo-400'
+                        }`}>
+                          {log.punch_type}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6">
+                        <span className="font-bold text-white block">{new Date(log.punch_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        <span className="text-[9px] text-slate-500 block">{log.attendance_date}</span>
+                      </td>
+                      <td className="py-4 px-6">
+                        {log.latitude ? (
+                          <a
+                            href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1.5 text-teal-400 hover:text-teal-350 hover:underline font-mono text-[10px]"
+                          >
+                            <MapPin className="h-3.5 w-3.5" />
+                            {log.latitude.toFixed(4)}, {log.longitude.toFixed(4)}
+                          </a>
+                        ) : (
+                          <span className="text-slate-600 font-mono text-[10px]">Unavailable</span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6">
+                        <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                          log.status === 'Present' ? 'bg-emerald-500/10 text-emerald-450 border border-emerald-500/20' :
+                          log.status === 'Late' ? 'bg-amber-500/10 text-amber-450 border border-amber-500/20' :
+                          'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                        }`}>
+                          {log.status}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6 text-right space-x-1.5 whitespace-nowrap">
+                        <button
+                          onClick={() => handleApproveLog(log.id)}
+                          disabled={log.status === 'Present'}
+                          className={`p-1.5 rounded-lg border transition ${
+                            log.status === 'Present'
+                              ? 'bg-slate-950/20 border-slate-900 text-slate-700 cursor-not-allowed'
+                              : 'bg-emerald-950/15 border-emerald-900/30 text-emerald-400 hover:bg-emerald-900/25'
+                          }`}
+                          title="Approve (Set Present)"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleRejectLog(log.id)}
+                          disabled={log.status === 'Absent'}
+                          className={`p-1.5 rounded-lg border transition ${
+                            log.status === 'Absent'
+                              ? 'bg-slate-950/20 border-slate-900 text-slate-700 cursor-not-allowed'
+                              : 'bg-rose-955/15 border-rose-900/30 text-rose-450 hover:bg-rose-900/25'
+                          }`}
+                          title="Reject (Set Absent)"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => openCorrectionModal(log)}
+                          className="p-1.5 bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg border border-slate-850 transition"
+                          title="Edit entry"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteLog(log.id)}
+                          className="p-1.5 bg-slate-950 hover:bg-rose-955/20 text-slate-400 hover:text-rose-450 rounded-lg border border-slate-850 transition"
+                          title="Delete entry"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Modal - Manual Correction Form */}

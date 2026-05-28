@@ -84,3 +84,22 @@ export const getLocalDateString = (date = new Date()) => {
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
+
+// Check if the current local time falls within a given shift start/end interval (handles midnight crossing)
+export const isCurrentTimeInShift = (startTimeStr, endTimeStr) => {
+  if (!startTimeStr || !endTimeStr) return false
+
+  const now = new Date()
+  const currentMinutes = now.getHours() * 60 + now.getMinutes()
+
+  const startMinutes = timeToMinutes(startTimeStr)
+  const endMinutes = timeToMinutes(endTimeStr)
+
+  if (startMinutes <= endMinutes) {
+    // Standard day shift (e.g. 09:00 - 18:00)
+    return currentMinutes >= startMinutes && currentMinutes <= endMinutes
+  } else {
+    // Overnight shift (e.g. 21:00 - 06:00)
+    return currentMinutes >= startMinutes || currentMinutes <= endMinutes
+  }
+}

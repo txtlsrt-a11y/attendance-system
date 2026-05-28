@@ -147,8 +147,8 @@ export default function ManageShifts() {
     setShiftName(shift.shift_name)
     
     // Convert HH:MM:SS to HH:MM for input tag
-    setStartTime(shift.start_time.slice(0, 5))
-    setEndTime(shift.end_time.slice(0, 5))
+    setStartTime((shift.start_time || '').slice(0, 5))
+    setEndTime((shift.end_time || '').slice(0, 5))
     
     setGraceMinutes(shift.grace_minutes)
     setActive(shift.active)

@@ -193,18 +193,14 @@ export default function AdminSettings() {
             
             <div className="bg-slate-900 border border-slate-850 rounded-3xl p-6 shadow-xl">
               <div className="flex items-center gap-2 mb-4">
-                <Key className="h-4.5 w-4.5 text-indigo-400" />
+                <Cpu className="h-4.5 w-4.5 text-indigo-400" />
                 <h3 className="text-xs font-black text-white uppercase tracking-wider">
-                  Supabase Backend
+                  Security Lock Active
                 </h3>
               </div>
-              <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                This client connects directly using the credentials loaded from the <code>.env</code> file. Make sure your RLS policies are ran inside the Supabase console.
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Database operations, storage bucket endpoints, and Row-Level Security (RLS) constraints are audited and monitored. Environment configuration keys are completely secured.
               </p>
-              
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-850 font-mono text-[10px] text-indigo-300 select-all truncate">
-                Url: {import.meta.env.VITE_SUPABASE_URL}
-              </div>
             </div>
 
             <div className="bg-slate-900/60 border border-slate-850 rounded-2xl p-4 flex gap-3 text-xs leading-relaxed text-slate-500">

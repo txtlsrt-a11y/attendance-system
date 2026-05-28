@@ -98,6 +98,14 @@ export const AuthProvider = ({ children }) => {
     })
 
     if (error) throw error
+
+    // Fetch profile immediately to check if login is enabled
+    const prof = await fetchProfile(data.user.id)
+    if (prof && prof.login_enabled === false) {
+      await supabase.auth.signOut()
+      throw new Error('Your account has been deactivated by the administrator.')
+    }
+
     return data
   }
 
