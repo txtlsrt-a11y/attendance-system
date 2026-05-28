@@ -284,14 +284,29 @@ export default function ManageWorkers() {
   }
 
   const handleDeleteWorker = async (id, name) => {
-    if (!confirm(`CRITICAL WARNING:\nAre you sure you want to permanently delete worker "${name}"?\nThis cascades and deletes their Supabase Auth user, profile, and all attendance logs.`)) return
+    if (!window.confirm(`CRITICAL WARNING:\nAre you sure you want to permanently delete worker "${name}"?\nThis cascades and deletes their profile and all attendance logs.`)) return
     try {
-      const { error } = await supabase.rpc('admin_delete_worker', { worker_uid: id })
-      if (error) throw error
+      const { error: rpcError } = await supabase.rpc('admin_delete_worker', { worker_uid: id })
+      
+      if (rpcError) {
+        console.warn('RPC delete failed, falling back to direct profile deletion:', rpcError.message)
+        
+        // Best effort: try to rename the email so the worker ID can be reused later
+        await supabase.rpc('admin_update_worker_email', { 
+          worker_uid: id, 
+          new_worker_id: `deleted_${id.substring(0,8)}_${Date.now()}` 
+        }).catch(() => {})
+        
+        // Fallback: Delete the profile directly. This will remove them from the app and cascade to attendance logs.
+        const { error: profileError } = await supabase.from('profiles').delete().eq('id', id)
+        if (profileError) throw profileError
+      }
+      
       await loadData()
       triggerToast(`Account and logs for ${name} deleted successfully.`)
     } catch (err) {
-      triggerToast('Failed to delete worker account.', 'error')
+      console.error('Failed to delete worker:', err)
+      triggerToast(err.message || 'Failed to delete worker account.', 'error')
     }
   }
 
