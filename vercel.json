@@ -1,9 +1,7 @@
 {
-  "cleanUrls": true,
-  "trailingSlash": false,
   "rewrites": [
     {
-      "source": "/((?!assets/|sw.js|manifest.json|favicon.ico|vite.svg|robots.txt).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]
