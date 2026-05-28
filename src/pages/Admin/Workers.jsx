@@ -292,10 +292,12 @@ export default function ManageWorkers() {
         console.warn('RPC delete failed, falling back to direct profile deletion:', rpcError.message)
         
         // Best effort: try to rename the email so the worker ID can be reused later
-        await supabase.rpc('admin_update_worker_email', { 
-          worker_uid: id, 
-          new_worker_id: `deleted_${id.substring(0,8)}_${Date.now()}` 
-        }).catch(() => {})
+        try {
+          await supabase.rpc('admin_update_worker_email', { 
+            worker_uid: id, 
+            new_worker_id: `deleted_${id.substring(0,8)}_${Date.now()}` 
+          })
+        } catch (e) {}
         
         // Fallback: Delete the profile directly. This will remove them from the app and cascade to attendance logs.
         const { error: profileError } = await supabase.from('profiles').delete().eq('id', id)
