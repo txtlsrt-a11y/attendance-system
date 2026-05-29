@@ -5,7 +5,7 @@ import { supabase } from '../supabase'
 import { Lock, User, Mail, ShieldAlert, Cpu } from 'lucide-react'
 
 export default function Login() {
-  const { signIn, user, profile } = useAuth()
+  const { signIn, user, profile, globalSettings } = useAuth()
   const navigate = useNavigate()
   const [isAdmin, setIsAdmin] = useState(false)
   const [identifier, setIdentifier] = useState('') // Worker ID or Admin Email
@@ -50,11 +50,17 @@ export default function Login() {
         
         {/* Logo and header */}
         <div className="flex flex-col items-center mb-8">
-          <div className="h-14 w-14 rounded-2xl bg-gradient-to-tr from-teal-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-teal-500/20 mb-4 animate-pulse">
-            <Cpu className="h-7 w-7 text-white" />
+          <div className="h-14 w-14 rounded-2xl flex items-center justify-center overflow-hidden mb-4 animate-pulse">
+            {globalSettings?.logo_url ? (
+              <img src={globalSettings.logo_url} alt="Logo" className="h-full w-full object-contain" />
+            ) : (
+              <div className="h-full w-full bg-gradient-to-tr from-teal-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-teal-500/20">
+                <Cpu className="h-7 w-7 text-white" />
+              </div>
+            )}
           </div>
           <h1 className="text-xl font-extrabold tracking-tight text-white text-center">
-            Textile Shift Attendance
+            {globalSettings?.company_name || 'Textile Shift Attendance'}
           </h1>
           <p className="text-xs text-slate-400 text-center mt-1">
             Factory Attendance Management Portal

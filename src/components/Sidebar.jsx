@@ -9,8 +9,10 @@ import {
   History,
   X
 } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
 export const Sidebar = ({ isOpen, onClose }) => {
+  const { globalSettings } = useAuth()
   const menuItems = [
     { name: 'Dashboard', path: '/admin', icon: LayoutDashboard },
     { name: 'Manage Workers', path: '/admin/workers', icon: Users },
@@ -39,9 +41,14 @@ export const Sidebar = ({ isOpen, onClose }) => {
         
         {/* Drawer header on mobile with explicit close button */}
         <div className="flex items-center justify-between p-4 border-b border-slate-850 md:hidden bg-slate-950">
-          <span className="text-xs font-black uppercase text-teal-400 tracking-wider">
-            Navigation Menu
-          </span>
+          <div className="flex items-center gap-2">
+            {globalSettings?.logo_url ? (
+              <img src={globalSettings.logo_url} alt="Logo" className="h-6 w-6 object-contain" />
+            ) : null}
+            <span className="text-xs font-black uppercase text-teal-400 tracking-wider">
+              Navigation Menu
+            </span>
+          </div>
           <button 
             onClick={onClose}
             className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"

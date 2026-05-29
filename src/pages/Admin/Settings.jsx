@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../supabase'
-import { Settings, Save, AlertTriangle, Key, ShieldAlert, Cpu } from 'lucide-react'
+import imageCompression from 'browser-image-compression'
+import { Settings, Save, AlertTriangle, Key, ShieldAlert, Cpu, Upload, Image as ImageIcon, X, Trash2 } from 'lucide-react'
 
 export default function AdminSettings() {
   const [loading, setLoading] = useState(true)
@@ -11,7 +12,11 @@ export default function AdminSettings() {
   const [lateGraceMinutes, setLateGraceMinutes] = useState(15)
   const [earlyExitMinutes, setEarlyExitMinutes] = useState(15)
   const [logoUrl, setLogoUrl] = useState('')
+  const [logoStoragePath, setLogoStoragePath] = useState('')
+  const [logoFile, setLogoFile] = useState(null)
   const [formError, setFormError] = useState('')
+  
+  const fileInputRef = useRef(null)
 
   const fetchSettings = async () => {
     setLoading(true)
@@ -24,12 +29,13 @@ export default function AdminSettings() {
 
       if (error) throw error
 
-      if (data) {
-        setCompanyName(data.company_name)
-        setLateGraceMinutes(data.late_grace_minutes)
-        setEarlyExitMinutes(data.early_exit_minutes)
-        setLogoUrl(data.logo_url || '')
-      }
+        if (data) {
+          setCompanyName(data.company_name)
+          setLateGraceMinutes(data.late_grace_minutes)
+          setEarlyExitMinutes(data.early_exit_minutes)
+          setLogoUrl(data.logo_url || '')
+          setLogoStoragePath(data.logo_storage_path || '')
+        }
     } catch (err) {
       console.error('Error fetching settings:', err)
     } finally {
@@ -47,17 +53,56 @@ export default function AdminSettings() {
     setSaveLoading(true)
 
     try {
+      let finalUrl = logoUrl
+      let finalPath = logoStoragePath
+
+      if (logoFile) {
+        let uploadFile = logoFile
+        if (logoFile.type.startsWith('image/')) {
+          try {
+            uploadFile = await imageCompression(logoFile, { maxSizeMB: 0.2, maxWidthOrHeight: 500, useWebWorker: true, fileType: 'image/webp' })
+          } catch (e) {
+            console.warn('Image compression failed', e)
+          }
+        }
+
+        const fileExt = uploadFile.type === 'image/webp' ? 'webp' : logoFile.name.split('.').pop()
+        const newPath = `logos/company_logo_${Date.now()}.${fileExt}`
+        
+        const { error: uploadError } = await supabase.storage
+          .from('company-assets')
+          .upload(newPath, uploadFile, { cacheControl: '3600', upsert: true })
+
+        if (uploadError) throw new Error('Failed to upload logo image: ' + uploadError.message)
+
+        const { data: { publicUrl } } = supabase.storage.from('company-assets').getPublicUrl(newPath)
+        
+        // Cleanup old logo if it existed
+        if (logoStoragePath) {
+          await supabase.storage.from('company-assets').remove([logoStoragePath]).catch(() => {})
+        }
+
+        finalUrl = publicUrl
+        finalPath = newPath
+      }
+
       const { error } = await supabase
         .from('settings')
         .update({
           company_name: companyName.trim(),
           late_grace_minutes: parseInt(lateGraceMinutes, 10),
           early_exit_minutes: parseInt(earlyExitMinutes, 10),
-          logo_url: logoUrl.trim()
+          logo_url: finalUrl,
+          logo_storage_path: finalPath
         })
         .eq('id', 1)
 
       if (error) throw error
+      
+      setLogoUrl(finalUrl)
+      setLogoStoragePath(finalPath)
+      setLogoFile(null)
+      
       alert('Global factory configurations saved successfully.')
     } catch (err) {
       console.error(err)
@@ -162,15 +207,88 @@ export default function AdminSettings() {
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
-                  Company Logo Image URL
+                  Company Logo Upload
                 </label>
-                <input
-                  type="text"
-                  placeholder="https://example.com/logo.png"
-                  value={logoUrl}
-                  onChange={(e) => setLogoUrl(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 text-white rounded-xl py-2.5 px-3.5 text-xs outline-none transition"
-                />
+                
+                {logoUrl && !logoFile ? (
+                  <div className="relative group rounded-2xl border-2 border-slate-800 bg-slate-900/50 p-4 flex flex-col items-center justify-center transition-all hover:border-slate-700">
+                    <img src={logoUrl} alt="Current Logo" className="h-20 object-contain rounded-lg mb-3 bg-white/5 p-2" />
+                    <div className="flex gap-3">
+                      <button 
+                        type="button" 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-[10px] font-bold text-teal-400 uppercase bg-teal-500/10 px-3 py-1.5 rounded-lg hover:bg-teal-500/20 transition"
+                      >
+                        Replace Logo
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={() => { setLogoUrl(''); setLogoStoragePath(''); setLogoFile(null); }}
+                        className="text-[10px] font-bold text-rose-400 uppercase bg-rose-500/10 px-3 py-1.5 rounded-lg hover:bg-rose-500/20 transition"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`relative rounded-2xl border-2 border-dashed transition-all cursor-pointer overflow-hidden ${
+                      logoFile 
+                        ? 'border-teal-500/50 bg-teal-500/5' 
+                        : 'border-slate-700 hover:border-indigo-500/50 hover:bg-indigo-500/5 bg-slate-900/50'
+                    } flex flex-col items-center justify-center p-6 text-center h-32`}
+                  >
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      className="hidden"
+                      accept="image/png, image/jpeg, image/jpg, image/webp, image/svg+xml"
+                      onChange={(e) => {
+                        const file = e.target.files[0]
+                        if (file) {
+                          if (file.size > 5 * 1024 * 1024) {
+                            setFormError('Image size cannot exceed 5MB')
+                            return
+                          }
+                          setLogoFile(file)
+                          setFormError('')
+                        }
+                      }}
+                    />
+                    
+                    {logoFile ? (
+                      <div className="flex flex-col items-center z-10">
+                        <div className="h-10 w-10 rounded-full bg-teal-500 flex items-center justify-center mb-2 shadow-lg shadow-teal-500/30">
+                          <ImageIcon className="h-5 w-5 text-slate-950" />
+                        </div>
+                        <span className="text-[11px] font-bold text-white mb-0.5 truncate max-w-[200px]">
+                          {logoFile.name}
+                        </span>
+                        <span className="text-[9px] text-teal-400 font-semibold uppercase tracking-wider">
+                          Ready to Upload
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setLogoFile(null); fileInputRef.current.value = ''; }}
+                          className="absolute top-2 right-2 p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-450 rounded-lg transition"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center">
+                        <div className="h-10 w-10 rounded-full bg-slate-800 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                          <Upload className="h-4.5 w-4.5 text-slate-400" />
+                        </div>
+                        <span className="text-xs font-bold text-slate-300">Click to upload logo</span>
+                        <span className="text-[9px] text-slate-500 uppercase tracking-widest mt-1">
+                          PNG, JPG, SVG up to 5MB
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end pt-4 border-t border-slate-850/60">

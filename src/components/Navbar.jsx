@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { LogOut, Clock, User, Award, Menu } from 'lucide-react'
 
 export const Navbar = ({ onMenuClick }) => {
-  const { profile, signOut } = useAuth()
+  const { profile, signOut, globalSettings } = useAuth()
   const [time, setTime] = useState(new Date())
 
   useEffect(() => {
@@ -39,8 +39,14 @@ export const Navbar = ({ onMenuClick }) => {
         )}
 
         <div className="flex items-center gap-2">
-          <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-teal-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-teal-500/10 flex-shrink-0">
-            <Award className="h-4.5 w-4.5 text-white" />
+          <div className="h-9 w-9 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0">
+            {globalSettings?.logo_url ? (
+              <img src={globalSettings.logo_url} alt="Logo" className="h-full w-full object-contain" />
+            ) : (
+              <div className="h-full w-full bg-gradient-to-tr from-teal-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-teal-500/10">
+                <Award className="h-4.5 w-4.5 text-white" />
+              </div>
+            )}
           </div>
           <div className="leading-none">
             <span className="text-xs font-black text-white tracking-wider uppercase block">

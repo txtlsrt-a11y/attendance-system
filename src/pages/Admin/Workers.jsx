@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo, useDeferredValue } from 'react'
 import { supabase, supabaseSecondary } from '../../supabase'
 import { WORKER_EMAIL_SUFFIX } from '../../context/AuthContext'
+import imageCompression from 'browser-image-compression'
 import { getLocalDateString, formatTime12h, isCurrentTimeInShift } from '../../utils/dateHelpers'
 import { 
   Users, UserPlus, Edit, Trash2, Search, X, ShieldAlert, Clock, 
@@ -17,6 +18,7 @@ export default function ManageWorkers() {
   
   // Interactive filters
   const [searchQuery, setSearchQuery] = useState('')
+  const deferredSearchQuery = useDeferredValue(searchQuery)
   const [selectedShiftFilter, setSelectedShiftFilter] = useState('all')
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('all')
 
@@ -94,8 +96,8 @@ export default function ManageWorkers() {
     return () => { supabase.removeChannel(channel) }
   }, [])
 
-  // Evaluate liveness and last punch logs today
-  const getProcessedWorkers = () => {
+  // Evaluate liveness and last punch logs today (memoized)
+  const processedWorkers = useMemo(() => {
     const todayStr = getLocalDateString()
     
     // Calculate calendar boundaries
@@ -156,7 +158,7 @@ export default function ManageWorkers() {
         otMonthly
       }
     })
-  }
+  }, [workers, attendance, recentAttendance])
 
   const getPasswordStrength = (pwd) => {
     if (!pwd) return { score: 0, text: '', color: 'bg-slate-800' }
@@ -169,9 +171,18 @@ export default function ManageWorkers() {
 
   const uploadProfilePhoto = async (id, file) => {
     try {
-      const fileExt = file.name.split('.').pop()
+      let uploadFile = file
+      if (file.type.startsWith('image/')) {
+        try {
+          uploadFile = await imageCompression(file, { maxSizeMB: 0.3, maxWidthOrHeight: 800, useWebWorker: true, fileType: 'image/webp' })
+        } catch (e) {
+          console.warn('Compression failed', e)
+        }
+      }
+
+      const fileExt = uploadFile.type === 'image/webp' ? 'webp' : file.name.split('.').pop()
       const filePath = `profiles/${id}_${Date.now()}.${fileExt}`
-      const { error } = await supabase.storage.from('attendance-selfies').upload(filePath, file, { cacheControl: '3600', upsert: true })
+      const { error } = await supabase.storage.from('attendance-selfies').upload(filePath, uploadFile, { cacheControl: '3600', upsert: true })
       if (error) throw error
       const { data: { publicUrl } } = supabase.storage.from('attendance-selfies').getPublicUrl(filePath)
       return publicUrl
@@ -183,9 +194,18 @@ export default function ManageWorkers() {
 
   const uploadAadhaarDocument = async (id, file) => {
     try {
-      const fileExt = file.name.split('.').pop()
+      let uploadFile = file
+      if (file.type.startsWith('image/')) {
+        try {
+          uploadFile = await imageCompression(file, { maxSizeMB: 0.5, maxWidthOrHeight: 1200, useWebWorker: true, fileType: 'image/webp' })
+        } catch (e) {
+          console.warn('Compression failed', e)
+        }
+      }
+
+      const fileExt = uploadFile.type === 'image/webp' ? 'webp' : file.name.split('.').pop()
       const filePath = `identities/${id}_aadhaar_${Date.now()}.${fileExt}`
-      const { error } = await supabase.storage.from('worker-documents').upload(filePath, file, { cacheControl: '3600', upsert: true })
+      const { error } = await supabase.storage.from('worker-documents').upload(filePath, uploadFile, { cacheControl: '3600', upsert: true })
       if (error) throw error
       return filePath
     } catch (err) {
@@ -396,23 +416,24 @@ export default function ManageWorkers() {
     setFormError('')
   }
 
-  const processedWorkers = getProcessedWorkers()
-  const filteredWorkers = processedWorkers.filter(w => {
-    const query = searchQuery.toLowerCase()
-    const matchesSearch = w.full_name.toLowerCase().includes(query) ||
-                          w.worker_id.toLowerCase().includes(query) ||
-                          (w.mobile || '').includes(query) ||
-                          (w.department || '').toLowerCase().includes(query) ||
-                          (w.shifts?.shift_name || '').toLowerCase().includes(query) ||
-                          w.activityStatus.toLowerCase().includes(query)
-    const matchesShift = selectedShiftFilter === 'all' || w.shift_id === selectedShiftFilter
-    let matchesStatus = true
-    if (selectedStatusFilter === 'active') matchesStatus = w.activityStatus === 'Active'
-    if (selectedStatusFilter === 'inactive') matchesStatus = w.activityStatus === 'Inactive'
-    if (selectedStatusFilter === 'absent') matchesStatus = w.activityStatus === 'Absent'
-    if (selectedStatusFilter === 'disabled') matchesStatus = !w.login_enabled
-    return matchesSearch && matchesShift && matchesStatus
-  })
+  const filteredWorkers = useMemo(() => {
+    return processedWorkers.filter(w => {
+      const query = deferredSearchQuery.toLowerCase()
+      const matchesSearch = w.full_name.toLowerCase().includes(query) ||
+                            w.worker_id.toLowerCase().includes(query) ||
+                            (w.mobile || '').includes(query) ||
+                            (w.department || '').toLowerCase().includes(query) ||
+                            (w.shifts?.shift_name || '').toLowerCase().includes(query) ||
+                            w.activityStatus.toLowerCase().includes(query)
+      const matchesShift = selectedShiftFilter === 'all' || w.shift_id === selectedShiftFilter
+      let matchesStatus = true
+      if (selectedStatusFilter === 'active') matchesStatus = w.activityStatus === 'Active'
+      if (selectedStatusFilter === 'inactive') matchesStatus = w.activityStatus === 'Inactive'
+      if (selectedStatusFilter === 'absent') matchesStatus = w.activityStatus === 'Absent'
+      if (selectedStatusFilter === 'disabled') matchesStatus = !w.login_enabled
+      return matchesSearch && matchesShift && matchesStatus
+    })
+  }, [processedWorkers, deferredSearchQuery, selectedShiftFilter, selectedStatusFilter])
 
   return (
     <div className="p-4 sm:p-6 space-y-6 relative min-h-screen pb-20 bg-slate-950 text-slate-100">

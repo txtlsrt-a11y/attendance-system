@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo, useDeferredValue } from 'react'
 import { supabase } from '../../supabase'
 import { getLocalDateString, formatTime12h, isCurrentTimeInShift } from '../../utils/dateHelpers'
 import { 
@@ -27,6 +27,7 @@ export default function AdminDashboard() {
   
   // Interactive filters
   const [searchQuery, setSearchQuery] = useState('')
+  const deferredSearchQuery = useDeferredValue(searchQuery)
   const [selectedShift, setSelectedShift] = useState('all')
   const [selectedDept, setSelectedDept] = useState('all')
   const [selectedStatus, setSelectedStatus] = useState('all') // 'all', 'active', 'inactive', 'absent'
@@ -51,18 +52,26 @@ export default function AdminDashboard() {
       const allWorkers = profilesData || []
       setWorkers(allWorkers)
 
-      // 3. Fetch past 31 days of attendance logs for multi-day OT aggregations
+      // 3. Optimize payload: split today's full logs from historical lightweight OT logs
       const thirtyOneDaysAgo = new Date()
       thirtyOneDaysAgo.setDate(thirtyOneDaysAgo.getDate() - 31)
       const thirtyOneDaysAgoStr = getLocalDateString(thirtyOneDaysAgo)
 
-      const { data: attendanceData } = await supabase
+      // Fetch today's full joined logs for live tracking and dashboard
+      const { data: todayLogs } = await supabase
         .from('attendance')
         .select('*, profiles(*), shifts(*)')
-        .gte('attendance_date', thirtyOneDaysAgoStr)
+        .eq('attendance_date', todayStr)
         .order('punch_time', { ascending: false })
 
-      setAttendance(attendanceData || [])
+      // Fetch historical logs purely for overtime calculations (minimal payload)
+      const { data: historicalLogs } = await supabase
+        .from('attendance')
+        .select('worker_id, attendance_date, overtime_hours, overtime_minutes')
+        .gte('attendance_date', thirtyOneDaysAgoStr)
+        .lt('attendance_date', todayStr)
+
+      setAttendance([...(todayLogs || []), ...(historicalLogs || [])])
 
     } catch (err) {
       console.error('Error querying real-time dashboard analytics:', err)
@@ -93,8 +102,8 @@ export default function AdminDashboard() {
     }
   }, [])
 
-  // Process today's live worker metrics
-  const getProcessedWorkers = () => {
+  // Process today's live worker metrics with useMemo to prevent re-calculations
+  const processedWorkers = useMemo(() => {
     const todayStr = getLocalDateString()
     return workers.map(worker => {
       // Find today's punches for this worker
@@ -142,31 +151,31 @@ export default function AdminDashboard() {
         activityStatus
       }
     })
-  }
+  }, [workers, attendance])
 
-  const processedWorkers = getProcessedWorkers()
+  // Dynamic filter lists with useMemo
+  const filteredWorkers = useMemo(() => {
+    return processedWorkers.filter(w => {
+      const query = deferredSearchQuery.toLowerCase()
+      const matchesSearch = 
+        w.full_name.toLowerCase().includes(query) ||
+        w.worker_id.toLowerCase().includes(query) ||
+        (w.mobile || '').includes(query) ||
+        (w.department || '').toLowerCase().includes(query) ||
+        (w.shifts?.shift_name || '').toLowerCase().includes(query) ||
+        (w.activityStatus || '').toLowerCase().includes(query)
+      
+      const matchesShift = selectedShift === 'all' || w.shift_id === selectedShift
+      const matchesDept = selectedDept === 'all' || w.department === selectedDept
+      
+      let matchesStatus = true
+      if (selectedStatus === 'active') matchesStatus = w.activityStatus === 'Active'
+      if (selectedStatus === 'inactive') matchesStatus = w.activityStatus === 'Inactive'
+      if (selectedStatus === 'absent') matchesStatus = w.activityStatus === 'Absent'
 
-  // Dynamic filter lists
-  const filteredWorkers = processedWorkers.filter(w => {
-    const query = searchQuery.toLowerCase()
-    const matchesSearch = 
-      w.full_name.toLowerCase().includes(query) ||
-      w.worker_id.toLowerCase().includes(query) ||
-      (w.mobile || '').includes(query) ||
-      (w.department || '').toLowerCase().includes(query) ||
-      (w.shifts?.shift_name || '').toLowerCase().includes(query) ||
-      (w.activityStatus || '').toLowerCase().includes(query)
-    
-    const matchesShift = selectedShift === 'all' || w.shift_id === selectedShift
-    const matchesDept = selectedDept === 'all' || w.department === selectedDept
-    
-    let matchesStatus = true
-    if (selectedStatus === 'active') matchesStatus = w.activityStatus === 'Active'
-    if (selectedStatus === 'inactive') matchesStatus = w.activityStatus === 'Inactive'
-    if (selectedStatus === 'absent') matchesStatus = w.activityStatus === 'Absent'
-
-    return matchesSearch && matchesShift && matchesDept && matchesStatus
-  })
+      return matchesSearch && matchesShift && matchesDept && matchesStatus
+    })
+  }, [processedWorkers, deferredSearchQuery, selectedShift, selectedDept, selectedStatus])
 
   // Global counts calculations
   const totalCount = processedWorkers.length
@@ -181,8 +190,8 @@ export default function AdminDashboard() {
   const overtimeCount = attendance.filter(log => log.attendance_date === todayStr && log.overtime_minutes > 0).length
   const totalOvertimeHours = attendance.filter(log => log.attendance_date === todayStr).reduce((sum, log) => sum + parseFloat(log.overtime_hours || 0), 0).toFixed(2)
 
-  // Get dynamic leaderboard statistics based on timeframe selection
-  const getLeaderboardData = () => {
+  // Get dynamic leaderboard statistics based on timeframe selection (memoized)
+  const leaderboardData = useMemo(() => {
     const startOfMonth = new Date()
     startOfMonth.setDate(1)
     const startOfMonthStr = getLocalDateString(startOfMonth)
@@ -204,8 +213,11 @@ export default function AdminDashboard() {
     return filtered
       .filter(log => log.overtime_minutes > 0)
       .reduce((acc, log) => {
-        const workerName = log.profiles?.full_name || 'Unknown Worker'
-        const workerId = log.profiles?.worker_id || 'N/A'
+        // Resolve worker details locally from workers array
+        const workerInfo = workers.find(w => w.id === log.worker_id)
+        const workerName = workerInfo?.full_name || log.profiles?.full_name || 'Unknown Worker'
+        const workerId = workerInfo?.worker_id || log.profiles?.worker_id || 'N/A'
+        
         const exists = acc.find(item => item.id === log.worker_id)
         if (exists) {
           exists.minutes += log.overtime_minutes
@@ -217,7 +229,7 @@ export default function AdminDashboard() {
       }, [])
       .sort((a, b) => b.hours - a.hours)
       .slice(0, 5)
-  }
+  }, [attendance, otTimeframe, workers, todayStr])
 
   // Shift-wise Calculations helper
   const getShiftMetrics = (shift) => {
@@ -421,9 +433,9 @@ export default function AdminDashboard() {
           <div className="space-y-3.5">
             {loading ? (
               <div className="text-xs text-slate-500">Loading...</div>
-            ) : getLeaderboardData().length === 0 ? (
+            ) : leaderboardData.length === 0 ? (
               <div className="text-xs text-slate-500 py-4 text-center">No overtime recorded for this timeframe.</div>
-            ) : getLeaderboardData().map((item, idx) => (
+            ) : leaderboardData.map((item, idx) => (
               <div key={item.id} className="flex items-center justify-between bg-slate-950/40 p-3 rounded-xl border border-slate-850">
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-black text-slate-500 font-mono">#{idx+1}</span>

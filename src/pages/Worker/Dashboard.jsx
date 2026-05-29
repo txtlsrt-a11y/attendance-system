@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../supabase'
+import imageCompression from 'browser-image-compression'
 import { CameraCapture } from '../../components/CameraCapture'
 import { LocationPicker } from '../../components/LocationPicker'
 import { InstallPWA } from '../../components/InstallPWA'
@@ -167,12 +168,27 @@ export default function WorkerDashboard() {
       if (!profile) throw new Error('Worker profile not found')
       if (!profile.shift_id) throw new Error('No shift assigned by administrator')
 
-      // 1. Upload compressed selfie to Supabase Storage
-      const fileName = `${profile.id}/${punchingType.toLowerCase()}_${Date.now()}.jpg`
+      // 1. Compress selfie image to prevent mobile freezing and bandwidth issues
+      const options = {
+        maxSizeMB: 0.3, // Compress to max 300KB
+        maxWidthOrHeight: 800,
+        useWebWorker: true,
+        fileType: 'image/webp'
+      }
+      
+      let compressedFile = file
+      try {
+        compressedFile = await imageCompression(file, options)
+      } catch (error) {
+        console.warn('Image compression failed, falling back to original.', error)
+      }
+
+      // 2. Upload compressed selfie to Supabase Storage
+      const fileName = `${profile.id}/${punchingType.toLowerCase()}_${Date.now()}.webp`
       
       const { data: uploadData, error: uploadErr } = await supabase.storage
         .from('attendance-selfies')
-        .upload(fileName, file, {
+        .upload(fileName, compressedFile, {
           cacheControl: '3600',
           upsert: true
         })

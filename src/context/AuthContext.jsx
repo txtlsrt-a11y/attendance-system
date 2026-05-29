@@ -11,6 +11,7 @@ export const WORKER_EMAIL_SUFFIX = '@textile-attendance.com'
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
+  const [globalSettings, setGlobalSettings] = useState(null)
   const [loading, setLoading] = useState(true)
 
   // Fetch profile for a given user ID
@@ -65,13 +66,28 @@ export const AuthProvider = ({ children }) => {
         }
       })
 
+      // Fetch initial global settings
+      const fetchSettings = async () => {
+        const { data } = await supabase.from('settings').select('*').single()
+        if (data) setGlobalSettings(data)
+      }
+      fetchSettings()
+
       subscription = data.subscription
     }
 
     initializeAuth()
 
+    // Listen to real-time changes on settings to update global branding
+    const settingsChannel = supabase.channel('global-settings-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, (payload) => {
+        if (payload.new) setGlobalSettings(payload.new)
+      })
+      .subscribe()
+
     return () => {
       if (subscription) subscription.unsubscribe()
+      supabase.removeChannel(settingsChannel)
     }
   }, [])
 
@@ -120,6 +136,7 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     profile,
+    globalSettings,
     loading,
     signIn,
     signOut,

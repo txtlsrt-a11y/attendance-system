@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { Suspense, lazy } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
@@ -6,16 +6,25 @@ import { Navbar } from './components/Navbar'
 import { Sidebar } from './components/Sidebar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
-// Import Pages
-import Login from './pages/Login'
-import WorkerDashboard from './pages/Worker/Dashboard'
-import WorkerProfile from './pages/Worker/Profile'
-import AdminDashboard from './pages/Admin/Dashboard'
-import ManageWorkers from './pages/Admin/Workers'
-import ManageShifts from './pages/Admin/Shifts'
-import AttendanceLogs from './pages/Admin/Attendance'
-import ReportsDashboard from './pages/Admin/Reports'
-import AdminSettings from './pages/Admin/Settings'
+// Lazy Load Pages
+const Login = lazy(() => import('./pages/Login'))
+const WorkerDashboard = lazy(() => import('./pages/Worker/Dashboard'))
+const WorkerProfile = lazy(() => import('./pages/Worker/Profile'))
+const AdminDashboard = lazy(() => import('./pages/Admin/Dashboard'))
+const ManageWorkers = lazy(() => import('./pages/Admin/Workers'))
+const ManageShifts = lazy(() => import('./pages/Admin/Shifts'))
+const AttendanceLogs = lazy(() => import('./pages/Admin/Attendance'))
+const ReportsDashboard = lazy(() => import('./pages/Admin/Reports'))
+const AdminSettings = lazy(() => import('./pages/Admin/Settings'))
+
+// Fallback loader
+const PageLoader = () => (
+  <div className="flex h-screen w-full items-center justify-center bg-slate-950">
+    <div className="relative flex items-center justify-center">
+      <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-700 border-t-teal-500"></div>
+    </div>
+  </div>
+)
 
 // Layout wrapper for administrators containing navbar and side control panel
 const AdminLayout = ({ children }) => {
@@ -77,98 +86,100 @@ export default function App() {
     <AuthProvider>
       <ErrorBoundary>
         <Router>
-          <Routes>
-            {/* Public Login */}
-            <Route path="/login" element={<Login />} />
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              {/* Public Login */}
+              <Route path="/login" element={<Login />} />
 
-            {/* Worker Protected Routes */}
-            <Route
-              path="/worker"
-              element={
-                <ProtectedRoute allowedRoles={['worker']}>
-                  <WorkerLayout>
-                    <WorkerDashboard />
-                  </WorkerLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/worker/profile"
-              element={
-                <ProtectedRoute allowedRoles={['worker']}>
-                  <WorkerLayout>
-                    <WorkerProfile />
-                  </WorkerLayout>
-                </ProtectedRoute>
-              }
-            />
+              {/* Worker Protected Routes */}
+              <Route
+                path="/worker"
+                element={
+                  <ProtectedRoute allowedRoles={['worker']}>
+                    <WorkerLayout>
+                      <WorkerDashboard />
+                    </WorkerLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/worker/profile"
+                element={
+                  <ProtectedRoute allowedRoles={['worker']}>
+                    <WorkerLayout>
+                      <WorkerProfile />
+                    </WorkerLayout>
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Admin Protected Routes */}
-            <Route
-              path="/admin"
-              element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <AdminLayout>
-                    <AdminDashboard />
-                  </AdminLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/workers"
-              element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <AdminLayout>
-                    <ManageWorkers />
-                  </AdminLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/shifts"
-              element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <AdminLayout>
-                    <ManageShifts />
-                  </AdminLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/attendance"
-              element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <AdminLayout>
-                    <AttendanceLogs />
-                  </AdminLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/reports"
-              element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <AdminLayout>
-                    <ReportsDashboard />
-                  </AdminLayout>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/settings"
-              element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <AdminLayout>
-                    <AdminSettings />
-                  </AdminLayout>
-                </ProtectedRoute>
-              }
-            />
+              {/* Admin Protected Routes */}
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminLayout>
+                      <AdminDashboard />
+                    </AdminLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/workers"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminLayout>
+                      <ManageWorkers />
+                    </AdminLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/shifts"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminLayout>
+                      <ManageShifts />
+                    </AdminLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/attendance"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminLayout>
+                      <AttendanceLogs />
+                    </AdminLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/reports"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminLayout>
+                      <ReportsDashboard />
+                    </AdminLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/settings"
+                element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AdminLayout>
+                      <AdminSettings />
+                    </AdminLayout>
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Fallbacks */}
-            <Route path="/" element={<RootRedirect />} />
-            <Route path="*" element={<Navigate to="/login" replace />} />
-          </Routes>
+              {/* Fallbacks */}
+              <Route path="/" element={<RootRedirect />} />
+              <Route path="*" element={<Navigate to="/login" replace />} />
+            </Routes>
+          </Suspense>
         </Router>
       </ErrorBoundary>
     </AuthProvider>
