@@ -4,7 +4,8 @@ import { WORKER_EMAIL_SUFFIX } from '../../context/AuthContext'
 import { getLocalDateString, formatTime12h, isCurrentTimeInShift } from '../../utils/dateHelpers'
 import { 
   Users, UserPlus, Edit, Trash2, Search, X, ShieldAlert, Clock, 
-  Briefcase, Phone, Eye, EyeOff, Check, ShieldCheck, Mail
+  Briefcase, Phone, Eye, EyeOff, Check, ShieldCheck, Mail,
+  FileText, Download, CheckCircle, AlertCircle, FileUp
 } from 'lucide-react'
 
 export default function ManageWorkers() {
@@ -37,6 +38,11 @@ export default function ManageWorkers() {
   const [loginEnabled, setLoginEnabled] = useState(true)
   const [photoFile, setPhotoFile] = useState(null)
   const [photoUrl, setPhotoUrl] = useState('')
+  
+  // Aadhaar specific states
+  const [aadhaarFile, setAadhaarFile] = useState(null)
+  const [aadhaarUrl, setAadhaarUrl] = useState('')
+  const [aadhaarVerified, setAadhaarVerified] = useState(false)
   
   const [formError, setFormError] = useState('')
   const [formLoading, setFormLoading] = useState(false)
@@ -175,6 +181,29 @@ export default function ManageWorkers() {
     }
   }
 
+  const uploadAadhaarDocument = async (id, file) => {
+    try {
+      const fileExt = file.name.split('.').pop()
+      const filePath = `identities/${id}_aadhaar_${Date.now()}.${fileExt}`
+      const { error } = await supabase.storage.from('worker-documents').upload(filePath, file, { cacheControl: '3600', upsert: true })
+      if (error) throw error
+      return filePath
+    } catch (err) {
+      console.error(err)
+      return ''
+    }
+  }
+
+  const handleDownloadAadhaar = async (path) => {
+    try {
+      const { data, error } = await supabase.storage.from('worker-documents').createSignedUrl(path, 60)
+      if (error) throw error
+      window.open(data.signedUrl, '_blank')
+    } catch (err) {
+      triggerToast('Failed to generate secure link for Aadhaar', 'error')
+    }
+  }
+
   const handleAddWorker = async (e) => {
     e.preventDefault()
     setFormError('')
@@ -191,6 +220,12 @@ export default function ManageWorkers() {
       let uploadedUrl = ''
       if (photoFile) uploadedUrl = await uploadProfilePhoto(idUpper, photoFile)
 
+      let uploadedAadhaarPath = ''
+      if (aadhaarFile) {
+        if (aadhaarFile.size > 10 * 1024 * 1024) throw new Error('Aadhaar file must be under 10MB')
+        uploadedAadhaarPath = await uploadAadhaarDocument(idUpper, aadhaarFile)
+      }
+
       const formattedEmail = `${idUpper.toLowerCase()}${WORKER_EMAIL_SUFFIX}`
       const { data, error: signupErr } = await supabaseSecondary.auth.signUp({
         email: formattedEmail,
@@ -204,7 +239,9 @@ export default function ManageWorkers() {
             department: department,
             shift_id: shiftId,
             photo_url: uploadedUrl,
-            login_enabled: true
+            login_enabled: true,
+            aadhaar_url: uploadedAadhaarPath,
+            aadhaar_verified: false
           }
         }
       })
@@ -249,6 +286,12 @@ export default function ManageWorkers() {
       let uploadedUrl = photoUrl
       if (photoFile) uploadedUrl = await uploadProfilePhoto(idUpper, photoFile) || photoUrl
 
+      let uploadedAadhaarPath = aadhaarUrl
+      if (aadhaarFile) {
+        if (aadhaarFile.size > 10 * 1024 * 1024) throw new Error('Aadhaar file must be under 10MB')
+        uploadedAadhaarPath = await uploadAadhaarDocument(idUpper, aadhaarFile) || aadhaarUrl
+      }
+
       const { error: updateErr } = await supabase.from('profiles').update({
         full_name: nameClean,
         worker_id: idUpper,
@@ -256,7 +299,9 @@ export default function ManageWorkers() {
         department: department,
         shift_id: shiftId || null,
         photo_url: uploadedUrl,
-        login_enabled: loginEnabled
+        login_enabled: loginEnabled,
+        aadhaar_url: uploadedAadhaarPath,
+        aadhaar_verified: aadhaarVerified
       }).eq('id', currentWorker.id)
 
       if (updateErr) throw updateErr
@@ -321,6 +366,9 @@ export default function ManageWorkers() {
     setShiftId(worker.shift_id || '')
     setPhotoUrl(worker.photo_url || '')
     setPhotoFile(null)
+    setAadhaarUrl(worker.aadhaar_url || '')
+    setAadhaarFile(null)
+    setAadhaarVerified(worker.aadhaar_verified || false)
     setLoginEnabled(worker.login_enabled ?? true)
     setNewPassword('')
     setConfirmPassword('')
@@ -336,6 +384,9 @@ export default function ManageWorkers() {
     setDepartment('Helper')
     setPhotoUrl('')
     setPhotoFile(null)
+    setAadhaarUrl('')
+    setAadhaarFile(null)
+    setAadhaarVerified(false)
     setPassword('12345678')
     setNewPassword('')
     setConfirmPassword('')
@@ -498,7 +549,7 @@ export default function ManageWorkers() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-850/50">
+                <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-850/50">
                   <div className="flex flex-col gap-0.5">
                     <span className="text-[7px] font-black uppercase text-slate-550 tracking-widest">Liveness</span>
                     {w.activityStatus === 'Active' ? (
@@ -516,6 +567,19 @@ export default function ManageWorkers() {
                       <span className="text-[8px] font-bold text-teal-400 bg-teal-500/5 px-2 py-0.5 rounded border border-teal-500/10 text-center">ACTIVE</span>
                     ) : (
                       <span className="text-[8px] font-bold text-rose-450 bg-rose-500/5 px-2 py-0.5 rounded border border-rose-500/10 text-center">DISABLED</span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[7px] font-black uppercase text-slate-550 tracking-widest">ID Status</span>
+                    {w.aadhaar_url ? (
+                      w.aadhaar_verified ? (
+                        <span className="text-[8px] font-bold text-teal-400 bg-teal-500/5 px-2 py-0.5 rounded border border-teal-500/10 text-center flex items-center justify-center gap-1"><ShieldCheck className="h-2 w-2" /> VERIFIED</span>
+                      ) : (
+                        <span className="text-[8px] font-bold text-amber-450 bg-amber-500/5 px-2 py-0.5 rounded border border-amber-500/10 text-center flex items-center justify-center gap-1"><AlertCircle className="h-2 w-2" /> PENDING</span>
+                      )
+                    ) : (
+                      <span className="text-[8px] font-bold text-slate-500 bg-slate-950 px-2 py-0.5 rounded border border-slate-850 text-center flex items-center justify-center gap-1">MISSING</span>
                     )}
                   </div>
                 </div>
@@ -581,6 +645,7 @@ export default function ManageWorkers() {
                     <th className="py-4 px-5">Photo</th>
                     <th className="py-4 px-5">Worker details</th>
                     <th className="py-4 px-5">Worker Login ID</th>
+                    <th className="py-4 px-5">ID Status</th>
                     <th className="py-4 px-5">Shift</th>
                     <th className="py-4 px-5">Liveness Status</th>
                     <th className="py-4 px-5">Login Access</th>
@@ -609,6 +674,20 @@ export default function ManageWorkers() {
                       </td>
                       <td className="py-3 px-5">
                         <span className="font-mono font-bold bg-slate-950 px-2 py-0.5 border border-slate-850 rounded text-slate-450 uppercase">{w.worker_id}</span>
+                      </td>
+                      <td className="py-3 px-5">
+                        {w.aadhaar_url ? (
+                          <div className="flex flex-col gap-1.5 items-start">
+                            {w.aadhaar_verified ? (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-teal-400 bg-teal-500/5 px-2 py-0.5 rounded border border-teal-500/10"><ShieldCheck className="h-2.5 w-2.5" /> VERIFIED</span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-amber-450 bg-amber-500/5 px-2 py-0.5 rounded border border-amber-500/10"><AlertCircle className="h-2.5 w-2.5" /> PENDING</span>
+                            )}
+                            <button onClick={() => handleDownloadAadhaar(w.aadhaar_url)} className="text-[9px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition"><Download className="h-2.5 w-2.5" /> View ID</button>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-slate-500 bg-slate-950 px-2 py-0.5 rounded border border-slate-850"><FileText className="h-2.5 w-2.5" /> MISSING</span>
+                        )}
                       </td>
                       <td className="py-3 px-5">
                         <span className="font-semibold text-slate-300">{w.shifts?.shift_name || 'No Shift'}</span>
@@ -691,7 +770,7 @@ export default function ManageWorkers() {
 
       {/* modal - ENROLL WORKER */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto shadow-2xl">
             <div className="flex justify-between items-center border-b border-slate-850 pb-4 mb-4">
               <div className="flex items-center gap-2 text-teal-400">
@@ -709,14 +788,59 @@ export default function ManageWorkers() {
             )}
 
             <form onSubmit={handleAddWorker} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Worker Photo File (Optional)</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setPhotoFile(e.target.files ? e.target.files[0] : null)}
-                  className="w-full bg-slate-950 border border-slate-850 text-slate-400 rounded-xl py-2 px-3 text-xs outline-none transition file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:uppercase file:bg-teal-500 file:text-slate-950 hover:file:bg-teal-400 file:cursor-pointer"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Worker Photo File (Optional)</label>
+                  <div className="relative group w-full h-28">
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      onChange={(e) => setPhotoFile(e.target.files ? e.target.files[0] : null)}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                    />
+                    <div className={`absolute inset-0 border border-dashed rounded-xl p-3 flex flex-col items-center justify-center transition-all duration-300 ${photoFile ? 'border-teal-500 bg-teal-500/5' : 'bg-slate-950 border-slate-800 group-hover:border-teal-500 group-hover:bg-slate-900/80'}`}>
+                      {photoFile ? (
+                        <>
+                           <CheckCircle className="h-6 w-6 text-teal-400 mb-1.5" />
+                           <span className="text-[9px] font-black text-white uppercase tracking-wider text-center line-clamp-1 w-full px-2">{photoFile.name}</span>
+                           <span className="text-[8px] text-slate-400 font-bold mt-1">Click to replace</span>
+                        </>
+                      ) : (
+                        <>
+                           <FileUp className="h-6 w-6 text-slate-500 group-hover:text-teal-400 transition-colors mb-1.5" />
+                           <span className="text-[9px] font-bold text-slate-300 uppercase tracking-wider">Upload Photo</span>
+                           <span className="text-[8px] text-slate-500 mt-1 text-center">Drag & Drop or Click</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Aadhaar / ID Card (Optional)</label>
+                  <div className="relative group w-full h-28">
+                    <input 
+                      type="file" 
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
+                      onChange={(e) => setAadhaarFile(e.target.files ? e.target.files[0] : null)}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                    />
+                    <div className={`absolute inset-0 border border-dashed rounded-xl p-3 flex flex-col items-center justify-center transition-all duration-300 ${aadhaarFile ? 'border-indigo-500 bg-indigo-500/5' : 'bg-slate-950 border-slate-800 group-hover:border-indigo-500 group-hover:bg-slate-900/80'}`}>
+                      {aadhaarFile ? (
+                        <>
+                           <CheckCircle className="h-6 w-6 text-indigo-400 mb-1.5" />
+                           <span className="text-[9px] font-black text-white uppercase tracking-wider text-center line-clamp-1 w-full px-2">{aadhaarFile.name}</span>
+                           <span className="text-[8px] text-slate-400 font-bold mt-1">Click to replace</span>
+                        </>
+                      ) : (
+                        <>
+                           <FileUp className="h-6 w-6 text-slate-500 group-hover:text-indigo-400 transition-colors mb-1.5" />
+                           <span className="text-[9px] font-bold text-slate-300 uppercase tracking-wider">Upload Aadhaar / ID</span>
+                           <span className="text-[8px] text-slate-500 mt-1 text-center">PDF, JPG, PNG (Max 10MB)</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -828,7 +952,7 @@ export default function ManageWorkers() {
 
       {/* modal - EDIT PROFILE & CREDENTIALS */}
       {showEditModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto shadow-2xl space-y-5">
             <div className="flex justify-between items-center border-b border-slate-850 pb-4">
               <div className="flex items-center gap-2 text-indigo-400">
@@ -896,17 +1020,89 @@ export default function ManageWorkers() {
                       <option value="Worper">Worper</option>
                     </select>
                   </div>
+                  {/* Empty div for grid spacing or future fields */}
+                  <div></div>
+                </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Replace Profile Photo (Optional)</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => setPhotoFile(e.target.files ? e.target.files[0] : null)}
-                      className="w-full bg-slate-950 border border-slate-850 text-slate-400 rounded-xl py-2 px-3 text-xs outline-none transition file:mr-3 file:py-1 file:px-2 file:rounded file:border-0 file:text-[9px] file:font-black file:uppercase file:bg-teal-500 file:text-slate-950 hover:file:bg-teal-400 file:cursor-pointer"
-                    />
+                    <div className="relative group w-full h-28">
+                      <input 
+                        type="file" 
+                        accept="image/*"
+                        onChange={(e) => setPhotoFile(e.target.files ? e.target.files[0] : null)}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                      />
+                      <div className={`absolute inset-0 border border-dashed rounded-xl p-3 flex flex-col items-center justify-center transition-all duration-300 ${photoFile ? 'border-teal-500 bg-teal-500/5' : 'bg-slate-950 border-slate-800 group-hover:border-teal-500 group-hover:bg-slate-900/80'}`}>
+                        {photoFile ? (
+                          <>
+                             <CheckCircle className="h-6 w-6 text-teal-400 mb-1.5" />
+                             <span className="text-[9px] font-black text-white uppercase tracking-wider text-center line-clamp-1 w-full px-2">{photoFile.name}</span>
+                             <span className="text-[8px] text-slate-400 font-bold mt-1">Click to replace</span>
+                          </>
+                        ) : (
+                          <>
+                             <FileUp className="h-6 w-6 text-slate-500 group-hover:text-teal-400 transition-colors mb-1.5" />
+                             <span className="text-[9px] font-bold text-slate-300 uppercase tracking-wider">Replace Photo</span>
+                             <span className="text-[8px] text-slate-500 mt-1 text-center">Drag & Drop or Click</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Upload/Replace Aadhaar ID</label>
+                    <div className="relative group w-full h-28">
+                      <input 
+                        type="file" 
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        onChange={(e) => setAadhaarFile(e.target.files ? e.target.files[0] : null)}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                      />
+                      <div className={`absolute inset-0 border border-dashed rounded-xl p-3 flex flex-col items-center justify-center transition-all duration-300 ${aadhaarFile ? 'border-indigo-500 bg-indigo-500/5' : 'bg-slate-950 border-slate-800 group-hover:border-indigo-500 group-hover:bg-slate-900/80'}`}>
+                        {aadhaarFile ? (
+                          <>
+                             <CheckCircle className="h-6 w-6 text-indigo-400 mb-1.5" />
+                             <span className="text-[9px] font-black text-white uppercase tracking-wider text-center line-clamp-1 w-full px-2">{aadhaarFile.name}</span>
+                             <span className="text-[8px] text-slate-400 font-bold mt-1">Click to replace</span>
+                          </>
+                        ) : (
+                          <>
+                             <FileUp className="h-6 w-6 text-slate-500 group-hover:text-indigo-400 transition-colors mb-1.5" />
+                             <span className="text-[9px] font-bold text-slate-300 uppercase tracking-wider">Replace Aadhaar</span>
+                             <span className="text-[8px] text-slate-500 mt-1 text-center">PDF, JPG, PNG (Max 10MB)</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
+
+                {aadhaarUrl && (
+                  <div className="bg-slate-950/40 border border-slate-850 rounded-xl p-3 flex justify-between items-center mt-3">
+                    <div className="flex items-center gap-2">
+                      <FileUp className="h-4 w-4 text-indigo-400" />
+                      <div>
+                        <span className="text-[10px] font-bold text-white block uppercase tracking-wider">Aadhaar / ID Card Uploaded</span>
+                        <span className="text-[9px] text-slate-500">Currently stored securely in private bucket</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button type="button" onClick={() => handleDownloadAadhaar(aadhaarUrl)} className="text-[9px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition"><Download className="h-3 w-3" /> View Document</button>
+                      
+                      <button
+                        type="button"
+                        onClick={() => setAadhaarVerified(!aadhaarVerified)}
+                        className={`text-[9px] font-black uppercase px-2.5 py-1 rounded border transition flex items-center gap-1 ${
+                          aadhaarVerified ? 'text-teal-400 bg-teal-500/5 border-teal-500/10' : 'text-amber-450 bg-amber-500/5 border-amber-500/10'
+                        }`}
+                      >
+                        {aadhaarVerified ? <><ShieldCheck className="h-3 w-3" /> VERIFIED</> : <><AlertCircle className="h-3 w-3" /> MARK AS VERIFIED</>}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Shift Assignment Section */}
