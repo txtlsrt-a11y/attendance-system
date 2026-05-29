@@ -73,7 +73,12 @@ export default function AdminSettings() {
           .from('company-assets')
           .upload(newPath, uploadFile, { cacheControl: '3600', upsert: true })
 
-        if (uploadError) throw new Error('Failed to upload logo image: ' + uploadError.message)
+        if (uploadError) {
+          if (uploadError.message.toLowerCase().includes('bucket not found')) {
+            throw new Error('Storage bucket "company-assets" is missing. Please run the required SQL migration to create the bucket.')
+          }
+          throw new Error('Failed to upload logo image: ' + uploadError.message)
+        }
 
         const { data: { publicUrl } } = supabase.storage.from('company-assets').getPublicUrl(newPath)
         

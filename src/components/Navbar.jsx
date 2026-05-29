@@ -39,21 +39,27 @@ export const Navbar = ({ onMenuClick }) => {
         )}
 
         <div className="flex items-center gap-2">
-          <div className="h-9 w-9 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0">
-            {globalSettings?.logo_url ? (
-              <img src={globalSettings.logo_url} alt="Logo" className="h-full w-full object-contain" />
-            ) : (
-              <div className="h-full w-full bg-gradient-to-tr from-teal-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-teal-500/10">
-                <Award className="h-4.5 w-4.5 text-white" />
-              </div>
+          <div className="h-9 w-9 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0 relative">
+            {globalSettings?.logo_url && (
+              <img 
+                src={globalSettings.logo_url} 
+                alt="Logo" 
+                className="h-full w-full object-contain z-10 bg-slate-900"
+                onError={(e) => {
+                  e.target.style.display = 'none'
+                }}
+              />
             )}
+            <div className="absolute inset-0 bg-gradient-to-tr from-teal-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-teal-500/10 z-0">
+              <Award className="h-4.5 w-4.5 text-white" />
+            </div>
           </div>
           <div className="leading-none">
-            <span className="text-xs font-black text-white tracking-wider uppercase block">
-              Textile Shift
+            <span className="text-xs font-black text-white tracking-wider uppercase block truncate max-w-[160px] sm:max-w-[200px]">
+              {globalSettings?.company_name ? globalSettings.company_name.split(' ').slice(0, 2).join(' ') : 'Textile Shift'}
             </span>
-            <span className="text-[9px] text-teal-400 font-extrabold tracking-widest uppercase block mt-0.5">
-              Attendance
+            <span className="text-[9px] text-teal-400 font-extrabold tracking-widest uppercase block mt-0.5 truncate max-w-[160px] sm:max-w-[200px]">
+              {globalSettings?.company_name ? globalSettings.company_name.split(' ').slice(2).join(' ') : 'Attendance'}
             </span>
           </div>
         </div>

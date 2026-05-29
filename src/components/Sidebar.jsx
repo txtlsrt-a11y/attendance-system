@@ -42,11 +42,16 @@ export const Sidebar = ({ isOpen, onClose }) => {
         {/* Drawer header on mobile with explicit close button */}
         <div className="flex items-center justify-between p-4 border-b border-slate-850 md:hidden bg-slate-950">
           <div className="flex items-center gap-2">
-            {globalSettings?.logo_url ? (
-              <img src={globalSettings.logo_url} alt="Logo" className="h-6 w-6 object-contain" />
-            ) : null}
+            {globalSettings?.logo_url && (
+              <img 
+                src={globalSettings.logo_url} 
+                alt="Logo" 
+                className="h-6 w-6 object-contain" 
+                onError={(e) => { e.target.style.display = 'none' }}
+              />
+            )}
             <span className="text-xs font-black uppercase text-teal-400 tracking-wider">
-              Navigation Menu
+              {globalSettings?.company_name ? globalSettings.company_name.split(' ').slice(0, 2).join(' ') : 'Navigation Menu'}
             </span>
           </div>
           <button 

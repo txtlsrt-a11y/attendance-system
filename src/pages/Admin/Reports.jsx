@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../../supabase'
+import { useAuth } from '../../context/AuthContext'
 import { exportToCSV, triggerPrint } from '../../utils/exportHelpers'
 import { getLocalDateString, formatTime12h } from '../../utils/dateHelpers'
 import { 
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react'
 
 export default function ReportsDashboard() {
+  const { globalSettings } = useAuth()
   const [reportType, setReportType] = useState('daily') // 'daily', 'monthly', 'worker', 'shift'
   const [shifts, setShifts] = useState([])
   const [workers, setWorkers] = useState([])
@@ -445,7 +447,9 @@ export default function ReportsDashboard() {
 
       {/* Print-Only Title Header */}
       <div className="hidden print-only mb-6 border-b border-black pb-4">
-        <h1 className="text-xl font-black text-black uppercase">Textile Shift Attendance Report</h1>
+        <h1 className="text-xl font-black text-black uppercase">
+          {globalSettings?.company_name || 'Textile Shift Attendance'} Report
+        </h1>
         <p className="text-xs text-black mt-1">
           Generated: {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}
         </p>

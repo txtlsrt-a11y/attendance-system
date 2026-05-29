@@ -11,7 +11,14 @@ export const WORKER_EMAIL_SUFFIX = '@textile-attendance.com'
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
-  const [globalSettings, setGlobalSettings] = useState(null)
+  const [globalSettings, setGlobalSettings] = useState(() => {
+    try {
+      const cached = localStorage.getItem('factory_branding')
+      return cached ? JSON.parse(cached) : null
+    } catch (e) {
+      return null
+    }
+  })
   const [loading, setLoading] = useState(true)
 
   // Fetch profile for a given user ID
@@ -90,6 +97,16 @@ export const AuthProvider = ({ children }) => {
       supabase.removeChannel(settingsChannel)
     }
   }, [])
+
+  // Sync global settings to local storage and document title
+  useEffect(() => {
+    if (globalSettings) {
+      localStorage.setItem('factory_branding', JSON.stringify(globalSettings))
+      if (globalSettings.company_name) {
+        document.title = globalSettings.company_name
+      }
+    }
+  }, [globalSettings])
 
   // Manual Profile Refresh
   const refreshProfile = async () => {
