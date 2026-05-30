@@ -60,8 +60,12 @@ CREATE TABLE IF NOT EXISTS public.settings (
     id INTEGER PRIMARY KEY DEFAULT 1,
     company_name TEXT DEFAULT 'Textile Shift Attendance System',
     logo_url TEXT,
+    logo_storage_path TEXT,
     late_grace_minutes INTEGER DEFAULT 15,
     early_exit_minutes INTEGER DEFAULT 15,
+    factory_latitude DECIMAL(10,6),
+    factory_longitude DECIMAL(10,6),
+    allowed_radius INTEGER DEFAULT 75,
     CONSTRAINT single_row CHECK (id = 1)
 );
 
@@ -73,9 +77,31 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- 7. Insert Default Settings
-INSERT INTO public.settings (id, company_name, late_grace_minutes, early_exit_minutes)
-VALUES (1, 'Textile Shift Attendance System', 15, 15)
+INSERT INTO public.settings (id, company_name, late_grace_minutes, early_exit_minutes, factory_latitude, factory_longitude, allowed_radius)
+VALUES (1, 'Textile Shift Attendance System', 15, 15, 21.152472, 73.825972, 50)
 ON CONFLICT DO NOTHING;
+
+-- 7.1 Set up RLS for Settings Table
+ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow authenticated settings select"
+ON public.settings
+FOR SELECT
+TO authenticated
+USING (true);
+
+CREATE POLICY "Allow authenticated settings update"
+ON public.settings
+FOR UPDATE
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Allow authenticated settings insert"
+ON public.settings
+FOR INSERT
+TO authenticated
+WITH CHECK (true);
 
 -- =======================================================
 -- 8. SECURITY DEFINER HELPER FUNCTIONS (RLS recursion protection)

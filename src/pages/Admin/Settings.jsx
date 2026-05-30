@@ -18,6 +18,7 @@ export default function AdminSettings() {
   const [allowedRadius, setAllowedRadius] = useState(50)
   const [logoFile, setLogoFile] = useState(null)
   const [formError, setFormError] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
   
   const fileInputRef = useRef(null)
 
@@ -56,6 +57,7 @@ export default function AdminSettings() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setFormError('')
+    setSuccessMessage('')
     setSaveLoading(true)
 
     try {
@@ -99,7 +101,8 @@ export default function AdminSettings() {
 
       const { error } = await supabase
         .from('settings')
-        .update({
+        .upsert({
+          id: 1,
           company_name: companyName.trim(),
           late_grace_minutes: parseInt(lateGraceMinutes, 10),
           early_exit_minutes: parseInt(earlyExitMinutes, 10),
@@ -109,7 +112,6 @@ export default function AdminSettings() {
           factory_longitude: parseFloat(factoryLongitude) || null,
           allowed_radius: parseInt(allowedRadius, 10) || 50
         })
-        .eq('id', 1)
 
       if (error) throw error
       
@@ -117,10 +119,16 @@ export default function AdminSettings() {
       setLogoStoragePath(finalPath)
       setLogoFile(null)
       
-      alert('Global factory configurations saved successfully.')
+      setSuccessMessage('Factory GPS Settings Saved Successfully')
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccessMessage('')
+      }, 3000)
+
     } catch (err) {
       console.error(err)
-      setFormError(err.message || 'Failed to update configurations.')
+      setFormError(`Database Error: ${err.message || 'Failed to update configurations.'}`)
     } finally {
       setSaveLoading(false)
     }
@@ -163,6 +171,20 @@ export default function AdminSettings() {
               <div className="bg-rose-500/10 border border-rose-500/20 text-rose-450 rounded-xl p-3.5 mb-4 flex items-start gap-2.5 text-xs">
                 <ShieldAlert className="h-5 w-5 text-rose-500 flex-shrink-0" />
                 <span>{formError}</span>
+              </div>
+            )}
+
+            {successMessage && (
+              <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-450 rounded-xl p-3.5 mb-4 flex items-center justify-between gap-2.5 text-xs">
+                <div className="flex items-center gap-2.5">
+                  <span className="h-5 w-5 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                    <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
+                  </span>
+                  <span className="font-bold">{successMessage}</span>
+                </div>
+                <button type="button" onClick={() => setSuccessMessage('')} className="text-emerald-500 hover:text-emerald-400">
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             )}
 
