@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../supabase'
 import imageCompression from 'browser-image-compression'
-import { Settings, Save, AlertTriangle, Key, ShieldAlert, Cpu, Upload, Image as ImageIcon, X, Trash2 } from 'lucide-react'
+import { Settings, Save, AlertTriangle, Key, ShieldAlert, Cpu, Upload, Image as ImageIcon, X, Trash2, MapPin } from 'lucide-react'
 
 export default function AdminSettings() {
   const [loading, setLoading] = useState(true)
@@ -13,6 +13,9 @@ export default function AdminSettings() {
   const [earlyExitMinutes, setEarlyExitMinutes] = useState(15)
   const [logoUrl, setLogoUrl] = useState('')
   const [logoStoragePath, setLogoStoragePath] = useState('')
+  const [factoryLatitude, setFactoryLatitude] = useState(0)
+  const [factoryLongitude, setFactoryLongitude] = useState(0)
+  const [allowedRadius, setAllowedRadius] = useState(50)
   const [logoFile, setLogoFile] = useState(null)
   const [formError, setFormError] = useState('')
   
@@ -35,6 +38,9 @@ export default function AdminSettings() {
           setEarlyExitMinutes(data.early_exit_minutes)
           setLogoUrl(data.logo_url || '')
           setLogoStoragePath(data.logo_storage_path || '')
+          setFactoryLatitude(data.factory_latitude || 0)
+          setFactoryLongitude(data.factory_longitude || 0)
+          setAllowedRadius(data.allowed_radius || 50)
         }
     } catch (err) {
       console.error('Error fetching settings:', err)
@@ -98,7 +104,10 @@ export default function AdminSettings() {
           late_grace_minutes: parseInt(lateGraceMinutes, 10),
           early_exit_minutes: parseInt(earlyExitMinutes, 10),
           logo_url: finalUrl,
-          logo_storage_path: finalPath
+          logo_storage_path: finalPath,
+          factory_latitude: parseFloat(factoryLatitude) || null,
+          factory_longitude: parseFloat(factoryLongitude) || null,
+          allowed_radius: parseInt(allowedRadius, 10) || 50
         })
         .eq('id', 1)
 
@@ -294,6 +303,60 @@ export default function AdminSettings() {
                     )}
                   </div>
                 )}
+              </div>
+
+              <div className="pt-6 border-t border-slate-850/60 mt-6">
+                <div className="flex items-center gap-2 mb-6">
+                  <MapPin className="h-5 w-5 text-indigo-400" />
+                  <h2 className="text-sm font-black text-white uppercase tracking-wider">
+                    Factory GPS Geofence
+                  </h2>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                      Factory Latitude *
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      required
+                      value={factoryLatitude || ''}
+                      onChange={(e) => setFactoryLatitude(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-white rounded-xl py-2.5 px-3.5 text-xs outline-none transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                      Factory Longitude *
+                    </label>
+                    <input
+                      type="number"
+                      step="any"
+                      required
+                      value={factoryLongitude || ''}
+                      onChange={(e) => setFactoryLongitude(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-white rounded-xl py-2.5 px-3.5 text-xs outline-none transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                      Allowed Radius (Meters) *
+                    </label>
+                    <input
+                      type="number"
+                      min={10}
+                      required
+                      value={allowedRadius || ''}
+                      onChange={(e) => setAllowedRadius(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-white rounded-xl py-2.5 px-3.5 text-xs outline-none transition"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-550 mt-3 leading-relaxed">
+                  Workers can only punch their attendance when their GPS location is within the allowed radius of these coordinates.
+                </p>
               </div>
 
               <div className="flex justify-end pt-4 border-t border-slate-850/60">

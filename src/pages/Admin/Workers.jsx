@@ -148,6 +148,19 @@ export default function ManageWorkers() {
         .filter(log => log.attendance_date >= startOfMonthStr)
         .reduce((sum, log) => sum + parseFloat(log.overtime_hours || 0), 0)
 
+      // Sum working hours
+      const hoursToday = workerLogs
+        .filter(log => log.attendance_date === todayStr)
+        .reduce((sum, log) => sum + parseFloat(log.working_hours || 0), 0)
+
+      const hoursWeekly = workerLogs
+        .filter(log => log.attendance_date >= sevenDaysAgoStr)
+        .reduce((sum, log) => sum + parseFloat(log.working_hours || 0), 0)
+
+      const hoursMonthly = workerLogs
+        .filter(log => log.attendance_date >= startOfMonthStr)
+        .reduce((sum, log) => sum + parseFloat(log.working_hours || 0), 0)
+
       return { 
         ...worker, 
         isPresent, 
@@ -155,7 +168,10 @@ export default function ManageWorkers() {
         lastPunch: lastPunchLog,
         otToday,
         otWeekly,
-        otMonthly
+        otMonthly,
+        hoursToday,
+        hoursWeekly,
+        hoursMonthly
       }
     })
   }, [workers, attendance, recentAttendance])
@@ -605,25 +621,27 @@ export default function ManageWorkers() {
                   </div>
                 </div>
 
-                {/* Mobile Per-Worker Overtime Quick Summary */}
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-slate-955 p-1.5 rounded-xl border border-slate-850/50">
-                    <span className="text-[7px] font-black uppercase text-slate-500 block tracking-wider">Today OT</span>
-                    <span className={`text-[10px] font-bold ${w.otToday > 0 ? 'text-teal-400' : 'text-slate-500'}`}>
-                      {w.otToday.toFixed(2)}h
-                    </span>
+                {/* Mobile Per-Worker Quick Summary */}
+                <div className="mt-3 grid grid-cols-2 gap-2 text-center">
+                  <div className="bg-slate-955 p-2 rounded-xl border border-slate-850/50 flex flex-col justify-center">
+                    <span className="text-[8px] font-black uppercase text-slate-500 block tracking-wider mb-1">Working Hrs (T/W/M)</span>
+                    <div className="flex justify-between items-center px-1 text-[10px] font-bold">
+                      <span className={w.hoursToday > 0 ? 'text-teal-400' : 'text-slate-500'}>{w.hoursToday.toFixed(1)}h</span>
+                      <span className="text-slate-700">|</span>
+                      <span className={w.hoursWeekly > 0 ? 'text-indigo-400' : 'text-slate-500'}>{w.hoursWeekly.toFixed(1)}h</span>
+                      <span className="text-slate-700">|</span>
+                      <span className={w.hoursMonthly > 0 ? 'text-blue-400' : 'text-slate-500'}>{w.hoursMonthly.toFixed(1)}h</span>
+                    </div>
                   </div>
-                  <div className="bg-slate-955 p-1.5 rounded-xl border border-slate-850/50">
-                    <span className="text-[7px] font-black uppercase text-slate-500 block tracking-wider">Weekly OT</span>
-                    <span className={`text-[10px] font-bold ${w.otWeekly > 0 ? 'text-indigo-400' : 'text-slate-500'}`}>
-                      {w.otWeekly.toFixed(2)}h
-                    </span>
-                  </div>
-                  <div className="bg-slate-955 p-1.5 rounded-xl border border-slate-850/50">
-                    <span className="text-[7px] font-black uppercase text-slate-500 block tracking-wider">Monthly OT</span>
-                    <span className={`text-[10px] font-bold ${w.otMonthly > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
-                      {w.otMonthly.toFixed(2)}h
-                    </span>
+                  <div className="bg-slate-955 p-2 rounded-xl border border-slate-850/50 flex flex-col justify-center">
+                    <span className="text-[8px] font-black uppercase text-slate-500 block tracking-wider mb-1">Overtime (T/W/M)</span>
+                    <div className="flex justify-between items-center px-1 text-[10px] font-bold">
+                      <span className={w.otToday > 0 ? 'text-amber-400' : 'text-slate-500'}>{w.otToday.toFixed(1)}h</span>
+                      <span className="text-slate-700">|</span>
+                      <span className={w.otWeekly > 0 ? 'text-rose-400' : 'text-slate-500'}>{w.otWeekly.toFixed(1)}h</span>
+                      <span className="text-slate-700">|</span>
+                      <span className={w.otMonthly > 0 ? 'text-rose-500' : 'text-slate-500'}>{w.otMonthly.toFixed(1)}h</span>
+                    </div>
                   </div>
                 </div>
 
@@ -668,11 +686,10 @@ export default function ManageWorkers() {
                     <th className="py-4 px-5">Worker Login ID</th>
                     <th className="py-4 px-5">ID Status</th>
                     <th className="py-4 px-5">Shift</th>
+                    <th className="py-4 px-5">Working Hours (T/W/M)</th>
+                    <th className="py-4 px-5">Overtime (T/W/M)</th>
                     <th className="py-4 px-5">Liveness Status</th>
                     <th className="py-4 px-5">Login Access</th>
-                    <th className="py-4 px-5">Today OT</th>
-                    <th className="py-4 px-5">Weekly OT</th>
-                    <th className="py-4 px-5">Monthly OT</th>
                     <th className="py-4 px-5">Last Attendance punch</th>
                     <th className="py-4 px-5 text-right">Actions</th>
                   </tr>
@@ -715,6 +732,50 @@ export default function ManageWorkers() {
                         {w.shifts && <span className="text-[9px] text-slate-500 block font-mono">{formatTime12h(w.shifts.start_time)} - {formatTime12h(w.shifts.end_time)}</span>}
                       </td>
                       <td className="py-3 px-5">
+                        <div className="flex flex-col gap-1 w-32">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-500 font-medium text-[9px] uppercase tracking-wider">Today</span>
+                            <span className={`font-mono text-[10px] font-bold ${w.hoursToday > 0 ? 'text-teal-400' : 'text-slate-500'}`}>
+                              {w.hoursToday.toFixed(2)}h
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-500 font-medium text-[9px] uppercase tracking-wider">Week</span>
+                            <span className={`font-mono text-[10px] font-bold ${w.hoursWeekly > 0 ? 'text-indigo-400' : 'text-slate-500'}`}>
+                              {w.hoursWeekly.toFixed(2)}h
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-500 font-medium text-[9px] uppercase tracking-wider">Month</span>
+                            <span className={`font-mono text-[10px] font-bold ${w.hoursMonthly > 0 ? 'text-blue-400' : 'text-slate-500'}`}>
+                              {w.hoursMonthly.toFixed(2)}h
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-5">
+                        <div className="flex flex-col gap-1 w-32">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-500 font-medium text-[9px] uppercase tracking-wider">Today</span>
+                            <span className={`font-mono text-[10px] font-bold ${w.otToday > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
+                              {w.otToday.toFixed(2)}h
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-500 font-medium text-[9px] uppercase tracking-wider">Week</span>
+                            <span className={`font-mono text-[10px] font-bold ${w.otWeekly > 0 ? 'text-rose-400' : 'text-slate-500'}`}>
+                              {w.otWeekly.toFixed(2)}h
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-500 font-medium text-[9px] uppercase tracking-wider">Month</span>
+                            <span className={`font-mono text-[10px] font-bold ${w.otMonthly > 0 ? 'text-rose-500' : 'text-slate-500'}`}>
+                              {w.otMonthly.toFixed(2)}h
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-5">
                         {w.activityStatus === 'Active' ? (
                           <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-450 bg-emerald-500/5 px-2.5 py-0.5 rounded border border-emerald-500/10">
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -742,33 +803,17 @@ export default function ManageWorkers() {
                           {w.login_enabled ? 'ACTIVE' : 'DISABLED'}
                         </button>
                       </td>
-                      <td className="py-3 px-5">
-                        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded border ${
-                          w.otToday > 0 ? 'text-teal-400 bg-teal-500/5 border-teal-500/10' : 'text-slate-500 bg-slate-950 border-slate-850'
-                        }`}>
-                          {w.otToday.toFixed(2)}h
-                        </span>
-                      </td>
-                      <td className="py-3 px-5">
-                        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded border ${
-                          w.otWeekly > 0 ? 'text-indigo-400 bg-indigo-500/5 border-indigo-500/10' : 'text-slate-500 bg-slate-950 border-slate-850'
-                        }`}>
-                          {w.otWeekly.toFixed(2)}h
-                        </span>
-                      </td>
-                      <td className="py-3 px-5">
-                        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded border ${
-                          w.otMonthly > 0 ? 'text-amber-400 bg-amber-500/5 border-amber-500/10' : 'text-slate-500 bg-slate-950 border-slate-850'
-                        }`}>
-                          {w.otMonthly.toFixed(2)}h
-                        </span>
-                      </td>
                       <td className="py-3 px-5 font-mono text-[10px] text-slate-405">
                         {w.lastPunch ? (
                           <div>
                             <span className={`font-bold uppercase ${w.lastPunch.punch_type === 'IN' ? 'text-teal-450' : 'text-indigo-400'}`}>{w.lastPunch.punch_type}</span>
                             <span> at {new Date(w.lastPunch.punch_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                             <span className="text-[9px] text-slate-500 block">{w.lastPunch.attendance_date}</span>
+                            {w.lastPunch.distance_from_factory != null && (
+                              <span className={`text-[9px] font-bold block mt-1 uppercase tracking-wider ${w.lastPunch.location_verified ? 'text-emerald-400' : 'text-rose-450'}`}>
+                                {w.lastPunch.location_verified ? '✅ Verified' : '❌ Outside'} ({Math.round(w.lastPunch.distance_from_factory)}m)
+                              </span>
+                            )}
                           </div>
                         ) : <span className="text-slate-600">Never punched</span>}
                       </td>

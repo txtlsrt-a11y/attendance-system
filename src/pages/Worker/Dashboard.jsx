@@ -22,7 +22,7 @@ import {
 import confetti from 'canvas-confetti'
 
 export default function WorkerDashboard() {
-  const { profile, signOut } = useAuth()
+  const { profile, signOut, globalSettings } = useAuth()
   const [lastPunch, setLastPunch] = useState(null)
   const [todayPunches, setTodayPunches] = useState([])
   const [history, setHistory] = useState([])
@@ -138,7 +138,17 @@ export default function WorkerDashboard() {
   const handlePunchClick = (type) => {
     // Basic verification before camera opens
     if (isLocked) {
-      alert(`System locked. Please wait ${lockTimeLeft}s before punching again.`)
+      alert('You must wait 5 minutes between punches.')
+      return
+    }
+
+    if (!gpsCoordinates.latitude || !gpsCoordinates.longitude) {
+      alert('Location permission is required to mark attendance.')
+      return
+    }
+
+    if (gpsCoordinates.isInside === false) {
+      alert(`You are outside factory premises (${Math.round(gpsCoordinates.distance)}m away). Move inside factory area to Punch ${type}.`)
       return
     }
     
@@ -214,6 +224,7 @@ export default function WorkerDashboard() {
       let status = 'Present'
       let overtimeMinutes = 0
       let overtimeHours = 0
+      let workingHours = 0
       let overtimeStatus = 'None'
 
       if (punchingType === 'IN') {
@@ -228,22 +239,33 @@ export default function WorkerDashboard() {
           status = 'Late' // modify status or report early exit
         }
 
-        // Automatic Overtime Calculation:
-        const punchMinutes = now.getHours() * 60 + now.getMinutes()
-        const [shiftEndH, shiftEndM] = shift.end_time.split(':')
-        const shiftEndMinutes = parseInt(shiftEndH, 10) * 60 + parseInt(shiftEndM, 10)
+        // Calculate Shift Duration
+        const [startH, startM] = shift.start_time.split(':').map(Number)
+        const [endH, endM] = shift.end_time.split(':').map(Number)
+        let shiftDurationHours = (endH + endM / 60) - (startH + startM / 60)
+        if (shiftDurationHours < 0) shiftDurationHours += 24 // Handle overnight shifts
 
-        let diffMinutes = punchMinutes - shiftEndMinutes
-        if (diffMinutes < -720) {
-          diffMinutes += 1440
-        } else if (diffMinutes > 720) {
-          diffMinutes -= 1440
-        }
+        // Dynamic Working Hours Calculation
+        if (matchingIn) {
+          const punchInTime = new Date(matchingIn.punch_time).getTime()
+          const punchOutTime = now.getTime()
+          const diffMs = punchOutTime - punchInTime
+          workingHours = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2))
 
-        if (diffMinutes > (shift.grace_minutes || 15)) {
-          overtimeMinutes = diffMinutes
-          overtimeHours = parseFloat((diffMinutes / 60).toFixed(2))
-          overtimeStatus = 'Approved'
+          // Overtime calculation based on actual worked hours vs assigned shift
+          if (workingHours > shiftDurationHours) {
+            overtimeHours = parseFloat((workingHours - shiftDurationHours).toFixed(2))
+            overtimeMinutes = Math.round(overtimeHours * 60)
+            
+            // Only approve OT if it's over the grace period
+            if (overtimeMinutes > (shift.grace_minutes || 15)) {
+              overtimeStatus = 'Approved'
+            } else {
+              // Zero it out if it doesn't exceed grace threshold to be strict
+              overtimeHours = 0
+              overtimeMinutes = 0
+            }
+          }
         }
       }
 
@@ -257,9 +279,12 @@ export default function WorkerDashboard() {
           selfie_url: publicUrl,
           latitude: gpsCoordinates.latitude,
           longitude: gpsCoordinates.longitude,
+          location_verified: gpsCoordinates.isInside !== undefined ? gpsCoordinates.isInside : true,
+          distance_from_factory: gpsCoordinates.distance || 0,
           punch_time: now.toISOString(),
           attendance_date: getLocalDateString(now),
           status: status,
+          working_hours: workingHours,
           overtime_minutes: overtimeMinutes,
           overtime_hours: overtimeHours,
           overtime_status: overtimeStatus
@@ -384,7 +409,10 @@ export default function WorkerDashboard() {
 
                 {/* GPS Location Picker */}
                 <div className="mb-8">
-                  <LocationPicker onChange={(coords) => setGpsCoordinates(coords)} />
+                  <LocationPicker 
+                    onChange={(coords) => setGpsCoordinates(coords)} 
+                    factorySettings={globalSettings}
+                  />
                 </div>
 
                 {/* Punch Action Grid */}

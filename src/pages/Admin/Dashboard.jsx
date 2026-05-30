@@ -264,7 +264,7 @@ export default function AdminDashboard() {
             </h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Realtime factory tracking powered by Supabase PostgreSQL WebSockets
+            Realtime factory tracking powered by Factory Database Network
           </p>
         </div>
 
@@ -661,12 +661,17 @@ export default function AdminDashboard() {
                   <div className="text-right leading-none">
                     {w.lastPunch ? (
                       <>
-                        <span className="text-[10px] font-bold text-white">
+                        <span className="text-[10px] font-bold text-white block">
                           Punched {w.lastPunch.punch_type}
                         </span>
                         <span className="text-[9px] text-slate-500 block mt-1">
                           {new Date(w.lastPunch.punch_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                         </span>
+                        {w.lastPunch.distance_from_factory != null && (
+                          <span className={`text-[8px] font-bold uppercase tracking-wider block mt-1 ${w.lastPunch.location_verified ? 'text-emerald-400' : 'text-rose-450'}`}>
+                            {w.lastPunch.location_verified ? '✅ Verified' : '❌ Outside'} ({Math.round(w.lastPunch.distance_from_factory)}m)
+                          </span>
+                        )}
                       </>
                     ) : (
                       <span className="text-[9px] text-slate-600 block">No logs today</span>

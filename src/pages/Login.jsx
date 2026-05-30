@@ -130,7 +130,8 @@ export default function Login() {
               </div>
               <p className="font-bold text-slate-300 mt-2">How to resolve:</p>
               <p className="mt-1 text-slate-400">
-                Open your Supabase **SQL Editor** and run the following command to initialize your administrator profile:
+                The administrator profile has not been configured yet.
+                Open your Database **SQL Editor** and run the following command to initialize your administrator profile:
               </p>
               <pre className="bg-slate-950 p-3 rounded-xl border border-slate-850 font-mono text-[9px] text-teal-400 my-2 select-all whitespace-pre-wrap leading-normal font-semibold">
 {`INSERT INTO public.profiles (id, role, full_name, worker_id, department)
@@ -170,7 +171,7 @@ ON CONFLICT (id) DO UPDATE SET role = 'admin';`}
               {isAdmin && (
                 <a
                   href="#forgot"
-                  onClick={() => alert('Forgot password features: Please contact your IT administrator to reset Supabase credentials.')}
+                  onClick={() => alert('Forgot password features: Please contact your IT administrator to reset system credentials.')}
                   className="text-xs text-indigo-400 hover:text-indigo-300 font-medium"
                 >
                   Forgot?
@@ -218,7 +219,7 @@ ON CONFLICT (id) DO UPDATE SET role = 'admin';`}
         {/* Demo credentials hint */}
         <div className="mt-8 border-t border-slate-800/80 pt-6">
           <p className="text-[11px] text-slate-500 text-center leading-relaxed">
-            Note: Admin credentials match your standard Supabase users. For worker login, the Admin must register them inside the Workers panel.
+            Note: Admin credentials match your standard Database users. For worker login, the Admin must register them inside the Workers panel.
           </p>
         </div>
 

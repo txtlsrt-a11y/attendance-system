@@ -95,7 +95,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
             </p>
             <div className="flex items-center gap-1.5 mt-2">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="text-xs text-emerald-400 font-medium">Supabase Connected</span>
+              <span className="text-xs text-emerald-400 font-medium">System Online</span>
             </div>
           </div>
         </div>

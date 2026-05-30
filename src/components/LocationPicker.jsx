@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react'
-import { MapPin, Check, AlertTriangle, Loader2 } from 'lucide-react'
+import { MapPin, Check, AlertTriangle, Loader2, XCircle } from 'lucide-react'
+import { calculateDistance } from '../utils/geoHelpers'
 
-export const LocationPicker = ({ onChange }) => {
+export const LocationPicker = ({ onChange, factorySettings }) => {
   const [loading, setLoading] = useState(true)
   const [coordinates, setCoordinates] = useState({ latitude: null, longitude: null })
   const [statusText, setStatusText] = useState('Acquiring GPS location...')
-  const [statusType, setStatusType] = useState('loading') // 'loading', 'success', 'denied'
+  const [statusType, setStatusType] = useState('loading') // 'loading', 'success', 'denied', 'outside'
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -28,22 +29,43 @@ export const LocationPicker = ({ onChange }) => {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude
         }
+        
         setCoordinates(coords)
-        setStatusText('GPS Location acquired successfully')
-        setStatusType('success')
+
+        let isInside = true
+        let dist = null
+
+        if (factorySettings?.factory_latitude && factorySettings?.factory_longitude) {
+          dist = calculateDistance(
+            coords.latitude, 
+            coords.longitude, 
+            factorySettings.factory_latitude, 
+            factorySettings.factory_longitude
+          )
+          
+          const maxRadius = factorySettings.allowed_radius || 50
+          if (dist > maxRadius) {
+            isInside = false
+          }
+        }
+
+        if (isInside) {
+          setStatusText(dist !== null ? `🟢 Inside Factory Area (${Math.round(dist)}m)` : 'GPS Location acquired successfully')
+          setStatusType('success')
+        } else {
+          setStatusText(`🔴 Outside Factory Area (${Math.round(dist)}m away). Move closer.`)
+          setStatusType('outside')
+        }
+
         setLoading(false)
-        onChange(coords)
+        onChange({ ...coords, isInside, distance: dist })
       },
       (error) => {
         console.warn('Geolocation error code:', error.code, error.message)
-        let msg = 'Location unavailable (GPS denied or timed out)'
-        if (error.code === error.PERMISSION_DENIED) {
-          msg = 'GPS Permission denied. Proceeding without location.'
-        }
-        setStatusText(msg)
+        setStatusText('Location permission is required for attendance.')
         setStatusType('denied')
         setLoading(false)
-        onChange({ latitude: null, longitude: null }) // still allow punch
+        onChange({ latitude: null, longitude: null, isInside: false, distance: null }) 
       },
       options
     )
@@ -60,8 +82,13 @@ export const LocationPicker = ({ onChange }) => {
         </div>
       )}
       {statusType === 'denied' && (
-        <div className="h-6 w-6 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0 text-amber-400">
+        <div className="h-6 w-6 rounded-full bg-rose-500/20 flex items-center justify-center flex-shrink-0 text-rose-400">
           <AlertTriangle className="h-3.5 w-3.5" />
+        </div>
+      )}
+      {statusType === 'outside' && (
+        <div className="h-6 w-6 rounded-full bg-rose-500/20 flex items-center justify-center flex-shrink-0 text-rose-400">
+          <XCircle className="h-3.5 w-3.5" />
         </div>
       )}
       
